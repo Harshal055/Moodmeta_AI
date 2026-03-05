@@ -64,7 +64,10 @@ export async function retryWithBackoff<T>(
       await sleep(delay);
 
       // Increase delay for next attempt (exponential backoff)
-      delay = Math.min(delay * finalConfig.backoffMultiplier, finalConfig.maxDelayMs);
+      delay = Math.min(
+        delay * finalConfig.backoffMultiplier,
+        finalConfig.maxDelayMs,
+      );
     }
   }
 

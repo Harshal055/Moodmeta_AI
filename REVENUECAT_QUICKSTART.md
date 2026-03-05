@@ -26,7 +26,6 @@ In RevenueCat dashboard:
    - Name: `Mood Buddy Pro - Monthly`
    - ID: `mood-buddy-pro-monthly`
    - Price: $9.99/month
-   
 2. Create:
    - Name: `Mood Buddy Pro - Annual`
    - ID: `mood-buddy-pro-annual`
@@ -57,6 +56,7 @@ npx expo run:ios
 ```
 
 On device:
+
 1. Open Chat
 2. Send 20+ messages
 3. Paywall should appear
@@ -91,29 +91,33 @@ On device:
 
 ## 🎯 What to Test
 
-| Feature | Free | Pro |
-|---------|------|-----|
-| Chat messages | 20/session | Unlimited |
-| Voice playback | ✗ | ✓ |
-| Export chat | ✗ | ✓ |
-| Ads | ✓ | ✗ |
-| Mood analytics | ✗ | ✓ |
-| Wellness hub | ✗ | ✓ |
-| Offline sync | ✗ | ✓ |
-| AI memory | ✗ | ✓ |
+| Feature        | Free       | Pro       |
+| -------------- | ---------- | --------- |
+| Chat messages  | 20/session | Unlimited |
+| Voice playback | ✗          | ✓         |
+| Export chat    | ✗          | ✓         |
+| Ads            | ✓          | ✗         |
+| Mood analytics | ✗          | ✓         |
+| Wellness hub   | ✗          | ✓         |
+| Offline sync   | ✗          | ✓         |
+| AI memory      | ✗          | ✓         |
 
 ## 💡 Common Issues
 
 ### "Plans unavailable"
+
 → Offering not set to CURRENT. Go to **Products → Offerings** and check the radio button.
 
 ### "Premium not activated"
+
 → Entitlement not linked. Go to each product and add "MoodMate Pro" entitlement.
 
 ### "Wrong prices showing"
+
 → Check product prices in **Products → Products**. Make sure they match your store prices.
 
 ### Ads not hiding for Pro
+
 → Check `useAuth.setState({ isPremium: true })` is called after purchase.
 
 ## 📖 Full Docs
@@ -132,6 +136,7 @@ On device:
 ---
 
 **Next Steps**:
+
 1. ✅ Add API keys to `.env.local`
 2. ✅ Create products in RevenueCat
 3. ✅ Test on device

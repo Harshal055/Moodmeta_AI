@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
-import { PurchaseErrorBoundary } from "../../components/PurchaseErrorBoundary";
 import { CustomAlertProvider } from "../../components/CustomAlert";
+import { PurchaseErrorBoundary } from "../../components/PurchaseErrorBoundary";
 
 export default function ModalsLayout() {
   return (

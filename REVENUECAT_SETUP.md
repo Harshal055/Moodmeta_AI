@@ -1,6 +1,7 @@
 # RevenueCat Setup Guide for Mood Buddy Pro
 
 ## Overview
+
 RevenueCat handles in-app subscriptions for Mood Buddy Pro. This guide will walk you through setting up products, testing, and verifying purchases.
 
 ## Step 1: Create RevenueCat Account & Project
@@ -130,6 +131,7 @@ EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=your_key_here
    - Add your Google account to **License Testing Accounts**
 
 2. Sign up for Google Play testing:
+
    ```
    - Go to Play Console → Settings → License Testing
    - Add your test account email
@@ -212,23 +214,26 @@ In `services/revenueCatService.ts`:
 
 ```typescript
 Purchases.setLogLevel(LOG_LEVEL.VERBOSE); // Enable detailed logs
-Purchases.setLogLevel(LOG_LEVEL.INFO);    // Info level
-Purchases.setLogLevel(LOG_LEVEL.ERROR);   // Production (errors only)
+Purchases.setLogLevel(LOG_LEVEL.INFO); // Info level
+Purchases.setLogLevel(LOG_LEVEL.ERROR); // Production (errors only)
 ```
 
 ### Common Issues
 
 #### "Plans are temporarily unavailable"
+
 - Check internet connection
 - Verify API key is correct
 - Ensure at least one offering is set to CURRENT
 
 #### "Premium was not activated"
+
 - Check entitlements are linked to products
 - Try "Restore Purchases"
 - Check RevenueCat dashboard → Customers for user
 
 #### Purchases appear but not on device
+
 - Ensure SDK is initialized before showing paywall
 - Check `checkEntitlement()` is using correct entitlement ID
 - Verify customer info is fetched after purchase

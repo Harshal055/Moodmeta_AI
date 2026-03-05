@@ -14,16 +14,16 @@ import {
 } from "react-native";
 import Purchases, { PurchasesPackage } from "react-native-purchases";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "../../hooks/useAuth";
-import { revenueCatService } from "../../services/revenueCatService";
-import { analyticsService } from "../../services/analyticsService";
 import { useAlert } from "../../components/CustomAlert";
-import {
-  retryWithBackoff,
-  getUserFriendlyErrorMessage,
-  getMonthlyEquivalent,
-} from "../../utils/purchaseUtils";
+import { useAuth } from "../../hooks/useAuth";
+import { analyticsService } from "../../services/analyticsService";
+import { revenueCatService } from "../../services/revenueCatService";
 import { logger } from "../../utils/logger";
+import {
+  getMonthlyEquivalent,
+  getUserFriendlyErrorMessage,
+  retryWithBackoff,
+} from "../../utils/purchaseUtils";
 
 // TODO: Replace these with your actual hosted URLs before submitting to stores
 const PRIVACY_POLICY_URL =
@@ -379,122 +379,64 @@ export default function PaywallScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
         showsVerticalScrollIndicator={false}
       >
-      <View
-        style={{ paddingTop: Platform.OS === "ios" ? 20 : insets.top + 20 }}
-        className="px-6 flex-1 mt-4"
-      >
-        {/* Title */}
-        <Text
-          style={{
-            fontFamily: "Manrope_700Bold",
-            fontSize: 32,
-            lineHeight: 40,
-            color: "#000",
-          }}
+        <View
+          style={{ paddingTop: Platform.OS === "ios" ? 20 : insets.top + 20 }}
+          className="px-6 flex-1 mt-4"
         >
-          {PAYWALL_CONFIG.heroTitle}
-        </Text>
-        <Text style={{ fontSize: 32, marginTop: 4, marginBottom: 8 }}>
-          {PAYWALL_CONFIG.heroEmoji}
-        </Text>
-        <Text
-          style={{
-            fontFamily: "Inter_400Regular",
-            fontSize: 13,
-            color: "#555",
-            marginBottom: 24,
-          }}
-        >
-          {PAYWALL_CONFIG.heroSubtitle}
-        </Text>
-
-        {/* Features */}
-        <View className="gap-y-4 mb-8">
-          {PAYWALL_CONFIG.features.map((feature, i) => (
-            <View key={i} className="flex-row items-center gap-x-3">
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={20}
-                color="#000"
-              />
-              <Text
-                style={{
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 13,
-                  color: "#111",
-                }}
-              >
-                {feature}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Monthly Option */}
-        <TouchableOpacity
-          onPress={() => setSelectedPackage("monthly")}
-          className={`p-4 rounded-xl border-2 mb-6 bg-white ${selectedPackage === "monthly" ? "border-black" : "border-gray-100"}`}
-        >
-          <View className="flex-row justify-between items-center">
-            <View>
-              <Text
-                style={{
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 14,
-                  color: "#000",
-                }}
-              >
-                {PAYWALL_CONFIG.monthly.label}
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Inter_400Regular",
-                  fontSize: 11,
-                  color: "#888",
-                  marginTop: 2,
-                }}
-              >
-                {PAYWALL_CONFIG.monthly.helper}
-              </Text>
-            </View>
-            <Text
-              style={{
-                fontFamily: "Manrope_700Bold",
-                fontSize: 18,
-                color: "#000",
-              }}
-            >
-              {monthlyPrice}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Yearly Option */}
-        <View className="mb-8">
-          <Animated.View
-            className="absolute z-10 -top-3 w-full items-center"
+          {/* Title */}
+          <Text
             style={{
-              transform: [{ scale: scaleAnim }],
+              fontFamily: "Manrope_700Bold",
+              fontSize: 32,
+              lineHeight: 40,
+              color: "#000",
             }}
           >
-            <View className="bg-[#E6F8EB] px-3 py-1 rounded-full border border-[#C6ECCC]">
-              <Text
-                style={{
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 10,
-                  color: "#147039",
-                }}
-              >
-                {PAYWALL_CONFIG.yearly.badge} • Save {savingsPercentage}%
-              </Text>
-            </View>
-          </Animated.View>
+            {PAYWALL_CONFIG.heroTitle}
+          </Text>
+          <Text style={{ fontSize: 32, marginTop: 4, marginBottom: 8 }}>
+            {PAYWALL_CONFIG.heroEmoji}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "Inter_400Regular",
+              fontSize: 13,
+              color: "#555",
+              marginBottom: 24,
+            }}
+          >
+            {PAYWALL_CONFIG.heroSubtitle}
+          </Text>
+
+          {/* Features */}
+          <View className="gap-y-4 mb-8">
+            {PAYWALL_CONFIG.features.map((feature, i) => (
+              <View key={i} className="flex-row items-center gap-x-3">
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color="#000"
+                />
+                <Text
+                  style={{
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 13,
+                    color: "#111",
+                  }}
+                >
+                  {feature}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Monthly Option */}
           <TouchableOpacity
-            onPress={() => setSelectedPackage("yearly")}
-            className={`p-4 pt-5 rounded-xl border-2 bg-white transition-all ${selectedPackage === "yearly" ? "border-black shadow-lg" : "border-gray-100"}`}
+            onPress={() => setSelectedPackage("monthly")}
+            className={`p-4 rounded-xl border-2 mb-6 bg-white ${selectedPackage === "monthly" ? "border-black" : "border-gray-100"}`}
           >
             <View className="flex-row justify-between items-center">
-              <View className="flex-1">
+              <View>
                 <Text
                   style={{
                     fontFamily: "Inter_500Medium",
@@ -502,7 +444,7 @@ export default function PaywallScreen() {
                     color: "#000",
                   }}
                 >
-                  {PAYWALL_CONFIG.yearly.label}
+                  {PAYWALL_CONFIG.monthly.label}
                 </Text>
                 <Text
                   style={{
@@ -512,162 +454,222 @@ export default function PaywallScreen() {
                     marginTop: 2,
                   }}
                 >
-                  {yearlyPrice}/yr (${monthlyEquivalent.toFixed(2)}/mo)
+                  {PAYWALL_CONFIG.monthly.helper}
                 </Text>
               </View>
-              <View className="items-end">
-                <Text
-                  style={{
-                    fontFamily: "Manrope_700Bold",
-                    fontSize: 18,
-                    color: "#000",
-                  }}
-                >
-                  {yearlyPrice}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 10,
-                    color: "#10B981",
-                    marginTop: 2,
-                  }}
-                >
-                  Best Value ✓
-                </Text>
-              </View>
+              <Text
+                style={{
+                  fontFamily: "Manrope_700Bold",
+                  fontSize: 18,
+                  color: "#000",
+                }}
+              >
+                {monthlyPrice}
+              </Text>
             </View>
           </TouchableOpacity>
-        </View>
 
-        <View className="flex-1" />
+          {/* Yearly Option */}
+          <View className="mb-8">
+            <Animated.View
+              className="absolute z-10 -top-3 w-full items-center"
+              style={{
+                transform: [{ scale: scaleAnim }],
+              }}
+            >
+              <View className="bg-[#E6F8EB] px-3 py-1 rounded-full border border-[#C6ECCC]">
+                <Text
+                  style={{
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 10,
+                    color: "#147039",
+                  }}
+                >
+                  {PAYWALL_CONFIG.yearly.badge} • Save {savingsPercentage}%
+                </Text>
+              </View>
+            </Animated.View>
+            <TouchableOpacity
+              onPress={() => setSelectedPackage("yearly")}
+              className={`p-4 pt-5 rounded-xl border-2 bg-white transition-all ${selectedPackage === "yearly" ? "border-black shadow-lg" : "border-gray-100"}`}
+            >
+              <View className="flex-row justify-between items-center">
+                <View className="flex-1">
+                  <Text
+                    style={{
+                      fontFamily: "Inter_500Medium",
+                      fontSize: 14,
+                      color: "#000",
+                    }}
+                  >
+                    {PAYWALL_CONFIG.yearly.label}
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 11,
+                      color: "#888",
+                      marginTop: 2,
+                    }}
+                  >
+                    {yearlyPrice}/yr (${monthlyEquivalent.toFixed(2)}/mo)
+                  </Text>
+                </View>
+                <View className="items-end">
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_700Bold",
+                      fontSize: 18,
+                      color: "#000",
+                    }}
+                  >
+                    {yearlyPrice}
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 10,
+                      color: "#10B981",
+                      marginTop: 2,
+                    }}
+                  >
+                    Best Value ✓
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
 
-        {purchaseError && (
-          <View className="bg-[#FEF2F2] border border-[#FECACA] rounded-xl p-3 mb-3">
+          <View className="flex-1" />
+
+          {purchaseError && (
+            <View className="bg-[#FEF2F2] border border-[#FECACA] rounded-xl p-3 mb-3">
+              <Text
+                style={{
+                  fontFamily: "Inter_500Medium",
+                  fontSize: 12,
+                  color: "#B91C1C",
+                }}
+              >
+                {purchaseError}
+              </Text>
+            </View>
+          )}
+
+          {/* CTA Button */}
+          <TouchableOpacity
+            onPress={handlePurchase}
+            disabled={isPurchasing || isLoadingOfferings}
+            className="w-full bg-black py-4 rounded-full items-center justify-center mt-6 mb-3"
+          >
+            {isPurchasing || isLoadingOfferings ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text
+                style={{
+                  fontFamily: "Manrope_700Bold",
+                  fontSize: 15,
+                  color: "#fff",
+                }}
+              >
+                {PAYWALL_CONFIG.cta}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={fetchOfferings}
+            disabled={isPurchasing}
+            className="py-1"
+          >
             <Text
               style={{
                 fontFamily: "Inter_500Medium",
                 fontSize: 12,
-                color: "#B91C1C",
-              }}
-            >
-              {purchaseError}
-            </Text>
-          </View>
-        )}
-
-        {/* CTA Button */}
-        <TouchableOpacity
-          onPress={handlePurchase}
-          disabled={isPurchasing || isLoadingOfferings}
-          className="w-full bg-black py-4 rounded-full items-center justify-center mt-6 mb-3"
-        >
-          {isPurchasing || isLoadingOfferings ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text
-              style={{
-                fontFamily: "Manrope_700Bold",
-                fontSize: 15,
-                color: "#fff",
-              }}
-            >
-              {PAYWALL_CONFIG.cta}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={fetchOfferings}
-          disabled={isPurchasing}
-          className="py-1"
-        >
-          <Text
-            style={{
-              fontFamily: "Inter_500Medium",
-              fontSize: 12,
-              color: "#666",
-              textAlign: "center",
-              textDecorationLine: "underline",
-            }}
-          >
-            {PAYWALL_CONFIG.refresh}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Footer text */}
-        <TouchableOpacity
-          onPress={handleRestore}
-          disabled={isPurchasing}
-          className="py-2 mt-2"
-        >
-          <Text
-            style={{
-              fontFamily: "Inter_500Medium",
-              fontSize: 13,
-              color: "#888",
-              textAlign: "center",
-              textDecorationLine: "underline",
-            }}
-          >
-            {PAYWALL_CONFIG.restore}
-          </Text>
-        </TouchableOpacity>
-
-        <Text
-          style={{
-            fontFamily: "Inter_400Regular",
-            fontSize: 10,
-            color: "#bbb",
-            textAlign: "center",
-            marginTop: 8,
-          }}
-        >
-          {PAYWALL_CONFIG.legalFooter}
-        </Text>
-        <Text
-          style={{
-            fontFamily: "Inter_400Regular",
-            fontSize: 10,
-            color: "#bbb",
-            textAlign: "center",
-            marginTop: 4,
-          }}
-        >
-          {PAYWALL_CONFIG.trustFooter}
-        </Text>
-
-        {/* Apple & Google require visible legal links on paywall screens */}
-        <View className="flex-row justify-center mt-4" style={{ gap: 16 }}>
-          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
-            <Text
-              style={{
-                fontFamily: "Inter_400Regular",
-                fontSize: 11,
-                color: "#aaa",
+                color: "#666",
+                textAlign: "center",
                 textDecorationLine: "underline",
               }}
             >
-              Privacy Policy
+              {PAYWALL_CONFIG.refresh}
             </Text>
           </TouchableOpacity>
+
+          {/* Footer text */}
           <TouchableOpacity
-            onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+            onPress={handleRestore}
+            disabled={isPurchasing}
+            className="py-2 mt-2"
           >
             <Text
               style={{
-                fontFamily: "Inter_400Regular",
-                fontSize: 11,
-                color: "#aaa",
+                fontFamily: "Inter_500Medium",
+                fontSize: 13,
+                color: "#888",
+                textAlign: "center",
                 textDecorationLine: "underline",
               }}
             >
-              Terms of Service
+              {PAYWALL_CONFIG.restore}
             </Text>
           </TouchableOpacity>
+
+          <Text
+            style={{
+              fontFamily: "Inter_400Regular",
+              fontSize: 10,
+              color: "#bbb",
+              textAlign: "center",
+              marginTop: 8,
+            }}
+          >
+            {PAYWALL_CONFIG.legalFooter}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "Inter_400Regular",
+              fontSize: 10,
+              color: "#bbb",
+              textAlign: "center",
+              marginTop: 4,
+            }}
+          >
+            {PAYWALL_CONFIG.trustFooter}
+          </Text>
+
+          {/* Apple & Google require visible legal links on paywall screens */}
+          <View className="flex-row justify-center mt-4" style={{ gap: 16 }}>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+            >
+              <Text
+                style={{
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 11,
+                  color: "#aaa",
+                  textDecorationLine: "underline",
+                }}
+              >
+                Privacy Policy
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+            >
+              <Text
+                style={{
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 11,
+                  color: "#aaa",
+                  textDecorationLine: "underline",
+                }}
+              >
+                Terms of Service
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
     </Animated.View>
   );
 }

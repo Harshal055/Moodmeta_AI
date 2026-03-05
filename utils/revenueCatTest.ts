@@ -1,12 +1,11 @@
 /**
  * RevenueCat Integration Test Utility
- * 
+ *
  * Use this to verify RevenueCat is properly configured and working
  * Run: npx ts-node utils/revenueCatTest.ts
  */
 
 import { revenueCatService } from "../services/revenueCatService";
-import Purchases from "react-native-purchases";
 
 async function testRevenueCatIntegration() {
   console.log("\n🧪 RevenueCat Integration Test\n");
@@ -19,13 +18,17 @@ async function testRevenueCatIntegration() {
     const iosKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
 
     if (androidKey) {
-      console.log(`  ✓ Android API Key: ${androidKey.substring(0, 6)}...${androidKey.substring(androidKey.length - 4)}`);
+      console.log(
+        `  ✓ Android API Key: ${androidKey.substring(0, 6)}...${androidKey.substring(androidKey.length - 4)}`,
+      );
     } else {
       console.log("  ✗ Missing Android API Key");
     }
 
     if (iosKey) {
-      console.log(`  ✓ iOS API Key: ${iosKey.substring(0, 6)}...${iosKey.substring(iosKey.length - 4)}`);
+      console.log(
+        `  ✓ iOS API Key: ${iosKey.substring(0, 6)}...${iosKey.substring(iosKey.length - 4)}`,
+      );
     } else {
       console.log("  ✗ Missing iOS API Key");
     }
@@ -42,7 +45,8 @@ async function testRevenueCatIntegration() {
 
     // Test 3: Get Offerings
     console.log("\n✓ Test 3: Fetch Offerings");
-    const { offering, monthly, annual } = await revenueCatService.getOfferings();
+    const { offering, monthly, annual } =
+      await revenueCatService.getOfferings();
 
     if (offering) {
       console.log(`  ✓ Offering found: ${offering.identifier}`);
@@ -72,12 +76,19 @@ async function testRevenueCatIntegration() {
       const isPro = revenueCatService.checkEntitlement(customerInfo);
       console.log(`  ✓ Customer Info retrieved`);
       console.log(`    - Pro Status: ${isPro ? "✓ Active" : "✗ Not Active"}`);
+
+      const subscriptionDetails = await Promise.resolve(
+        revenueCatService.getSubscriptionDetails(customerInfo),
+      );
       
-      const subscriptionDetails = revenueCatService.getSubscriptionDetails(customerInfo);
       if (subscriptionDetails) {
-        console.log(`    - Status: ${subscriptionDetails.isActive ? "Active" : "Inactive"}`);
+        console.log(
+          `    - Status: ${subscriptionDetails.isActive ? "Active" : "Inactive"}`,
+        );
         if (subscriptionDetails.expirationDate) {
-          console.log(`    - Expires: ${subscriptionDetails.expirationDate.toLocaleDateString()}`);
+          console.log(
+            `    - Expires: ${subscriptionDetails.expirationDate.toLocaleDateString()}`,
+          );
         }
       }
     } else {
@@ -86,7 +97,6 @@ async function testRevenueCatIntegration() {
 
     console.log("\n" + "═".repeat(50));
     console.log("\n✅ RevenueCat Integration Test Complete\n");
-
   } catch (error) {
     console.error("\n❌ Test Failed:", error);
   }

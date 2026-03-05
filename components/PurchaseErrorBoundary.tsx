@@ -6,13 +6,8 @@
  */
 
 import { Ionicons } from "@expo/vector-icons";
-import React, { ReactNode, useState } from "react";
-import {
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { ReactNode } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { logger } from "../utils/logger";
 
@@ -93,8 +88,7 @@ function DefaultErrorFallback({ error, retry, retryCount }: FallbackProps) {
   const insets = useSafeAreaInsets();
 
   const isRecoverable =
-    !error.message.toLowerCase().includes("network") &&
-    retryCount < 3;
+    !error.message.toLowerCase().includes("network") && retryCount < 3;
 
   const getErrorMessage = () => {
     if (error.message.toLowerCase().includes("network")) {

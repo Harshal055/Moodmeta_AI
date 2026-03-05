@@ -1,9 +1,16 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
-import { Animated, Easing, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import {
+    Animated,
+    Easing,
+    StatusBar,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { requestReviewPostPurchase } from "../utils/purchaseUtils";
 import { logger } from "../utils/logger";
+import { requestReviewPostPurchase } from "../utils/purchaseUtils";
 
 export default function UpgradeSuccessScreen() {
   const router = useRouter();

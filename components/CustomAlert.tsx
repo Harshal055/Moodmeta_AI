@@ -7,13 +7,7 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Modal,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
 
 export type AlertType = "success" | "error" | "warning" | "info";
 
@@ -51,7 +45,11 @@ export function useAlert(): CustomAlertInstance {
   };
 }
 
-export function CustomAlertProvider({ children }: { children: React.ReactNode }) {
+export function CustomAlertProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [visible, setVisible] = useState(false);
   const [config, setConfig] = useState<CustomAlertConfig | null>(null);
   const scaleAnim = useRef(new Animated.Value(0)).current;

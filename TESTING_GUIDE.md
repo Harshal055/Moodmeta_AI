@@ -7,6 +7,7 @@
 **Scenario**: User with free account tries to use Pro features
 
 **Steps**:
+
 1. Run app without signing in to Pro
 2. Open Chat screen
 3. Verify:
@@ -24,6 +25,7 @@
 **Scenario**: User taps to upgrade or hits message limit
 
 **Steps**:
+
 1. Open Chat and send 20+ messages
 2. Paywall should pop up
 3. Verify display shows:
@@ -42,10 +44,12 @@
 **Scenario**: User completes a test purchase
 
 **Prerequisites**:
+
 - Rev RevenueCat sandbox mode enabled
 - Google account added to License Testing
 
 **Steps**:
+
 1. Open paywall
 2. Select **Annual** plan
 3. Tap "Start Free Trial"
@@ -69,10 +73,12 @@
 **Scenario**: User completes a test purchase on iOS
 
 **Prerequisites**:
+
 - iOS sandbox tester account created in RevenueCat
 - App built for iOS simulator
 
 **Steps**:
+
 1. Sign out of App Store (Settings → App Store → Sign Out)
 2. Open Mood Buddy
 3. Go to paywall
@@ -90,6 +96,7 @@
 **Scenario**: Verify all Pro features are properly gated
 
 **Free User**:
+
 - [ ] Voice playback disabled (no button on AI messages)
 - [ ] Chat export disabled (no export button)
 - [ ] 20 message limit enforced
@@ -97,6 +104,7 @@
 - [ ] Settings show "Upgrade to Pro" for analytics/wellness
 
 **Pro User**:
+
 - [ ] Voice playback button visible and functional
 - [ ] Can export chat via native Share API
 - [ ] Unlimited messages
@@ -106,6 +114,7 @@
 - [ ] AI memory service active
 
 **Steps**:
+
 1. Test as free user → verify restrictions
 2. Make test purchase → verify all features unlock
 3. Restore purchase → verify features remain unlocked
@@ -119,6 +128,7 @@
 **Scenario**: User's subscription restores on app reinstall/new device
 
 **Steps**:
+
 1. After test purchase, close paywall
 2. Go to Settings screen
 3. Tap "Restore Purchases"
@@ -138,6 +148,7 @@
 **Steps**:
 
 **Android**:
+
 1. On device: Play Store app → Account → Subscriptions → Mood Buddy Pro
 2. Tap "Manage subscription" → "Cancel subscription"
 3. Confirm cancellation
@@ -148,6 +159,7 @@
    - [ ] Pro features disabled
 
 **iOS**:
+
 1. Go to Settings → [Your Name] → Subscriptions
 2. Select "Mood Buddy"
 3. Tap "Cancel Subscription"
@@ -163,6 +175,7 @@
 **Scenario**: Verify backend knows about Pro status
 
 **Steps**:
+
 1. Open RevenueCat dashboard
 2. Go to **Customers**
 3. Search for your test user
@@ -182,6 +195,7 @@
 **Scenario**: Verify 2-day free trial works
 
 **Steps**:
+
 1. Complete test purchase
 2. Make note of current date
 3. Verify Pro works immediately
@@ -198,6 +212,7 @@
 **Scenario**: Test network errors and edge cases
 
 **Disconnect Internet**:
+
 1. Turn off Wi-Fi/mobile data
 2. Open paywall
 3. Verify error message: "Could not load subscription plans"
@@ -206,6 +221,7 @@
 6. Verify plans load
 
 **Interrupted Purchase**:
+
 1. Start purchase flow
 2. Click back before completing
 3. Return to paywall
@@ -218,6 +234,7 @@
 ## Checklist Before Launch
 
 ### Configuration
+
 - [ ] RevenueCat account created
 - [ ] API keys stored in `.env.local`
 - [ ] Products created in RevenueCat (monthly & annual)
@@ -225,17 +242,20 @@
 - [ ] Entitlements linked to products
 
 ### App Store (iOS)
+
 - [ ] App created in App Store Connect
 - [ ] In-App Purchases created (matching RevenueCat)
 - [ ] RevenueCat linked to App Store
 
 ### Google Play (Android)
+
 - [ ] App created in Play Console
 - [ ] Subscription products created (matching RevenueCat)
 - [ ] RevenueCat linked to Google Play
 - [ ] Sandbox tested with license tester
 
 ### Code
+
 - [ ] Feature flags implemented for all Pro features
 - [ ] Paywall screens correctly
 - [ ] Purchase handler updates user state
@@ -243,6 +263,7 @@
 - [ ] Restore purchases functionality works
 
 ### Testing
+
 - [ ] [x] Test 1: Free user restrictions verified
 - [ ] [x] Test 2: Paywall displays correctly
 - [ ] [x] Test 3: Purchase flow works (Android)
@@ -255,6 +276,7 @@
 - [ ] [x] Test 10: Error handling works
 
 ### Legal
+
 - [ ] Privacy policy updated
 - [ ] Terms updated with subscription terms
 - [ ] Cancellation instructions clear
@@ -263,12 +285,14 @@
 ## Test User Accounts
 
 ### Android (Google Play Sandbox)
+
 ```
 Email: your-test-account@gmail.com
 Password: Test123!
 ```
 
 ### iOS (App Store Sandbox)
+
 ```
 Email: iphone-test@example.com
 Password: IPhoneTest123!
@@ -293,6 +317,7 @@ npm ls react-native-purchases
 ## Support
 
 If tests fail:
+
 1. Check RevenueCat dashboard for errors
 2. Verify API keys are correct
 3. Ensure products are in CURRENT offering

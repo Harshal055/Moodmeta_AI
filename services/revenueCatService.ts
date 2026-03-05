@@ -1,5 +1,10 @@
 import { Platform } from "react-native";
-import Purchases, { CustomerInfo, LOG_LEVEL, Offering, PurchasesPackage } from "react-native-purchases";
+import Purchases, {
+    CustomerInfo,
+    LOG_LEVEL,
+    Offering,
+    PurchasesPackage,
+} from "react-native-purchases";
 import { logger } from "../utils/logger";
 
 const iosApiKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -97,7 +102,7 @@ export const revenueCatService = {
   }> {
     try {
       const offerings = await Purchases.getOfferings();
-      
+
       if (!offerings.current) {
         logger.warn("No current offering found in RevenueCat");
         return { offering: null, monthly: null, annual: null };
@@ -154,9 +159,10 @@ export const revenueCatService = {
       logger.warn("No customer info available for entitlement check");
       return false;
     }
-    
-    const hasEntitlement = typeof customerInfo.entitlements.active[ENTITLEMENT_ID] !== "undefined";
-    
+
+    const hasEntitlement =
+      typeof customerInfo.entitlements.active[ENTITLEMENT_ID] !== "undefined";
+
     if (hasEntitlement) {
       const entitlement = customerInfo.entitlements.active[ENTITLEMENT_ID];
       logger.info("✅ Pro entitlement active:", {
@@ -164,7 +170,7 @@ export const revenueCatService = {
         isActive: entitlement?.isActive,
       });
     }
-    
+
     return hasEntitlement;
   },
 
@@ -188,20 +194,26 @@ export const revenueCatService = {
    */
   async getSubscriptionDetails(customerInfo: CustomerInfo | null) {
     if (!customerInfo) return null;
-    
+
     try {
       const entitlement = customerInfo.entitlements.active[ENTITLEMENT_ID];
-      
+
       if (!entitlement) {
         return null;
       }
 
       return {
         isActive: entitlement.isActive,
-        expirationDate: entitlement.expirationDate ? new Date(entitlement.expirationDate) : null,
+        expirationDate: entitlement.expirationDate
+          ? new Date(entitlement.expirationDate)
+          : null,
         productIdentifier: entitlement.productIdentifier,
-        originalPurchaseDate: entitlement.originalPurchaseDate ? new Date(entitlement.originalPurchaseDate) : null,
-        latestPurchaseDate: entitlement.latestPurchaseDate ? new Date(entitlement.latestPurchaseDate) : null,
+        originalPurchaseDate: entitlement.originalPurchaseDate
+          ? new Date(entitlement.originalPurchaseDate)
+          : null,
+        latestPurchaseDate: entitlement.latestPurchaseDate
+          ? new Date(entitlement.latestPurchaseDate)
+          : null,
       };
     } catch (e) {
       logger.error("Error getting subscription details:", e);

@@ -55,12 +55,12 @@ Pro Features Unlock:
 // app/(main)/chat.tsx
 if (!isPremium && userMessageCount >= FREE_MESSAGE_LIMIT) {
   setHitLimit(true);
-  router.push("/(modals)/paywall");  // ← Paywall opens
+  router.push("/(modals)/paywall"); // ← Paywall opens
 }
 
 // app/(modals)/paywall.tsx
 useEffect(() => {
-  fetchOfferings();  // Get products from RevenueCat
+  fetchOfferings(); // Get products from RevenueCat
 }, []);
 ```
 
@@ -70,9 +70,8 @@ useEffect(() => {
 // app/(modals)/paywall.tsx
 const handlePurchase = async () => {
   try {
-    const pkgToBuy = selectedPackage === "monthly" 
-      ? packages.monthly 
-      : packages.yearly;
+    const pkgToBuy =
+      selectedPackage === "monthly" ? packages.monthly : packages.yearly;
 
     // Purchase package (platform-specific)
     const { customerInfo } = await Purchases.purchasePackage(pkgToBuy);
@@ -83,7 +82,7 @@ const handlePurchase = async () => {
     if (isPremium) {
       // Update app state ← CRITICAL!
       useAuth.setState({ isPremium: true });
-      
+
       // Show success
       router.replace("/(modals)/upgrade-success");
     }
@@ -126,7 +125,7 @@ export function isFeatureEnabled(feature: string, isPremium: boolean): boolean {
 ```typescript
 // hooks/useAuth.ts
 interface AuthState {
-  isPremium: boolean;      // ← Updated after purchase
+  isPremium: boolean; // ← Updated after purchase
   currentUser: User | null;
   profile: Profile | null;
   // ... other properties
@@ -140,7 +139,7 @@ useAuth.subscribe(
   (state) => state.isPremium,
   (isPremium) => {
     // Re-render components using feature flags
-  }
+  },
 );
 ```
 
@@ -204,12 +203,12 @@ Try/catch block
 
 ### Common Errors
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| "Plans unavailable" | Offering not CURRENT | Set offering to CURRENT in RevenueCat |
-| "Premium not activated" | Entitlement missing | Link entitlement to products |
-| "Invalid product" | Product ID mismatch | Check IDs match exactly |
-| "Billing unavailable" | Wrong test account | Use sandbox tester account |
+| Error                   | Cause                | Fix                                   |
+| ----------------------- | -------------------- | ------------------------------------- |
+| "Plans unavailable"     | Offering not CURRENT | Set offering to CURRENT in RevenueCat |
+| "Premium not activated" | Entitlement missing  | Link entitlement to products          |
+| "Invalid product"       | Product ID mismatch  | Check IDs match exactly               |
+| "Billing unavailable"   | Wrong test account   | Use sandbox tester account            |
 
 ## Real-Time Updates
 
@@ -244,10 +243,10 @@ useEffect(() => {
 
   // Check RevenueCat subscription
   revenueCatService.login(user.id);
-  
+
   const customerInfo = await revenueCatService.getCustomerInfo();
   const isPremium = revenueCatService.checkEntitlement(customerInfo);
-  
+
   setState({ isPremium });
 }, [user?.id]);
 ```
@@ -297,7 +296,9 @@ useAuth.setState({ isPremium: isPro });
 ```typescript
 describe("revenueCatService", () => {
   it("should detect active entitlement", () => {
-    const customerInfo = { /* mock */ };
+    const customerInfo = {
+      /* mock */
+    };
     const isPro = revenueCatService.checkEntitlement(customerInfo);
     expect(isPro).toBe(true);
   });
