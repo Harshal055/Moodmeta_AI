@@ -1,6 +1,6 @@
 /**
  * Wellness Resources
- * 
+ *
  * Mental health articles, tips, and guided exercises
  * Pro feature only
  */

@@ -35,10 +35,13 @@ import {
     getAIResponseStream,
     transcribeAudio,
 } from "../../services/openaiService";
-import { speakMessage, stopSpeech } from "../../utils/voiceService";
-import { shareChat, exportAsText } from "../../utils/chatExport";
+import { adService } from "../../utils/adService";
+import { aiMemoryService } from "../../utils/aiMemoryService";
+import { shareChat } from "../../utils/chatExport";
 import { isFeatureEnabled } from "../../utils/featureFlags";
 import { logger } from "../../utils/logger";
+import { offlineSyncService } from "../../utils/offlineSyncService";
+import { speakMessage, stopSpeech } from "../../utils/voiceService";
 
 const FREE_MESSAGE_LIMIT = 20;
 const CHAT_SESSION_COUNT_KEY_PREFIX = "chat_sessions_";
@@ -71,6 +74,7 @@ export default function ChatScreen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [showAd, setShowAd] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const trackedSessionUserRef = useRef<string | null>(null);
 
@@ -104,6 +108,43 @@ export default function ChatScreen() {
     }),
     [],
   );
+
+  // ── Initialize services ────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Initialize AI Memory Service for personalized responses
+    aiMemoryService.getUserMemory(user.id).catch((err) => {
+      logger.error("Failed to load user memory:", err);
+    });
+
+    // Initialize Offline Sync Service (Pro feature)
+    if (isPremium && isFeatureEnabled("offline_chat_mode", isPremium)) {
+      offlineSyncService.init().catch((err) => {
+        logger.error("Failed to initialize offline sync:", err);
+      });
+    }
+
+    // Initialize Ad Service for free users
+    if (!isPremium) {
+      adService
+        .init()
+        .then(() => {
+          adService.showBannerAd(user.id, isPremium);
+          setShowAd(true);
+        })
+        .catch((err) => {
+          logger.error("Failed to initialize ads:", err);
+        });
+    }
+
+    return () => {
+      // Cleanup
+      if (!isPremium) {
+        adService.cleanup();
+      }
+    };
+  }, [user?.id, isPremium]);
 
   // ── Chat session tracking (for delayed mood prompt) ──────────────
   useEffect(() => {
@@ -464,7 +505,10 @@ export default function ChatScreen() {
       let streamingText = "";
       let aiMessageAdded = false;
 
+      // Get user context from AI Memory Service (Pro feature)
       let moodContext: string | undefined;
+      let userMemoryContext = "";
+
       try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -489,6 +533,29 @@ export default function ChatScreen() {
           moodContext = MOOD_MAP[data.mood_score];
         }
       } catch (e) {}
+
+      // Load AI memory for personalized context (Pro feature)
+      if (isPremium && isFeatureEnabled("ai_memory", isPremium)) {
+        try {
+          const memory = await aiMemoryService.getUserMemory(user.id);
+          if (memory) {
+            const interests = memory.interests?.length
+              ? memory.interests.join(", ")
+              : "";
+            const topics = memory.favorite_topics?.length
+              ? memory.favorite_topics.join(", ")
+              : "";
+            userMemoryContext = `User interests: ${interests}. Favorite topics: ${topics}. Preferred tone: ${memory.preferred_tone}.`;
+
+            // Update current mood in memory
+            if (moodContext) {
+              await aiMemoryService.updateMood(user.id, moodContext);
+            }
+          }
+        } catch (err) {
+          logger.warn("Failed to load AI memory:", err);
+        }
+      }
 
       try {
         await getAIResponseStream(
@@ -648,22 +715,22 @@ export default function ChatScreen() {
   }
 
   // ── Custom UI Renders for GiftedChat (Memoized for Performance) ──
-  
+
   // Voice message handler (Pro feature)
   const handlePlayVoice = useCallback(
     async (messageId: string, text: string) => {
       if (!isPremium || !isFeatureEnabled("voiceMessages", isPremium)) return;
-      
+
       try {
         if (playingMessageId === messageId) {
           await stopSpeech();
           setPlayingMessageId(null);
         } else {
           setPlayingMessageId(messageId);
-          await speakMessage(text, { 
-            rate: 0.9, 
+          await speakMessage(text, {
+            rate: 0.9,
             pitch: 1.1,
-            language: userLanguage === "Hinglish" ? "hi-IN" : "en-US"
+            language: userLanguage === "Hinglish" ? "hi-IN" : "en-US",
           });
           setPlayingMessageId(null);
         }
@@ -672,25 +739,25 @@ export default function ChatScreen() {
         setPlayingMessageId(null);
       }
     },
-    [isPremium, playingMessageId, userLanguage]
+    [isPremium, playingMessageId, userLanguage],
   );
 
   // Chat export handler (Pro feature)
   const handleExportChat = useCallback(async () => {
     if (!isPremium || !isFeatureEnabled("chatExport", isPremium)) return;
-    
+
     setIsExporting(true);
     try {
       const success = await shareChat(
-        messages.map(m => ({
+        messages.map((m) => ({
           role: m.user._id === 1 ? "user" : "assistant",
           content: m.text,
           timestamp: m.createdAt?.toISOString(),
         })),
         companionName,
-        profile?.name || "You"
+        profile?.name || "You",
       );
-      
+
       if (success) {
         setErrorToast(null);
       }
@@ -702,66 +769,79 @@ export default function ChatScreen() {
     }
   }, [isPremium, messages, companionName, profile?.name]);
 
-  const renderBubble = useCallback((props: any) => {
-    const isAI = props.currentMessage.user._id === 2;
-    
-    return (
-      <View>
-        <Bubble
-          {...props}
-          wrapperStyle={{
-            right: {
-              backgroundColor: "#D9EEFF", // Blue for user
-              borderTopRightRadius: 4,
-              borderTopLeftRadius: 20,
-              borderBottomRightRadius: 20,
-              borderBottomLeftRadius: 20,
-              padding: 4,
-              marginBottom: 4,
-            },
-            left: {
-              backgroundColor: "#FCDCE4", // Pink for AI
-              borderTopLeftRadius: 4,
-              borderTopRightRadius: 20,
-              borderBottomRightRadius: 20,
-              borderBottomLeftRadius: 20,
-              padding: 4,
-              marginBottom: 4,
-            },
-          }}
-        />
-        {/* Voice playback button for AI messages (Pro feature) */}
-        {isAI && isPremium && isFeatureEnabled("voiceMessages", isPremium) && (
-          <TouchableOpacity
-            onPress={() =>
-              handlePlayVoice(props.currentMessage._id, props.currentMessage.text)
-            }
-            style={{
-              paddingLeft: 8,
-              marginBottom: 8,
-              flexDirection: "row",
-              alignItems: "center",
+  const renderBubble = useCallback(
+    (props: any) => {
+      const isAI = props.currentMessage.user._id === 2;
+
+      return (
+        <View>
+          <Bubble
+            {...props}
+            wrapperStyle={{
+              right: {
+                backgroundColor: "#D9EEFF", // Blue for user
+                borderTopRightRadius: 4,
+                borderTopLeftRadius: 20,
+                borderBottomRightRadius: 20,
+                borderBottomLeftRadius: 20,
+                padding: 4,
+                marginBottom: 4,
+              },
+              left: {
+                backgroundColor: "#FCDCE4", // Pink for AI
+                borderTopLeftRadius: 4,
+                borderTopRightRadius: 20,
+                borderBottomRightRadius: 20,
+                borderBottomLeftRadius: 20,
+                padding: 4,
+                marginBottom: 4,
+              },
             }}
-          >
-            <View
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: playingMessageId === props.currentMessage._id ? "#FF6B9D" : "#F0F0F0",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ fontSize: 16 }}>
-                {playingMessageId === props.currentMessage._id ? "⏸️" : "🔊"}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  }, [isPremium, playingMessageId, handlePlayVoice]);
+          />
+          {/* Voice playback button for AI messages (Pro feature) */}
+          {isAI &&
+            isPremium &&
+            isFeatureEnabled("voiceMessages", isPremium) && (
+              <TouchableOpacity
+                onPress={() =>
+                  handlePlayVoice(
+                    props.currentMessage._id,
+                    props.currentMessage.text,
+                  )
+                }
+                style={{
+                  paddingLeft: 8,
+                  marginBottom: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor:
+                      playingMessageId === props.currentMessage._id
+                        ? "#FF6B9D"
+                        : "#F0F0F0",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontSize: 16 }}>
+                    {playingMessageId === props.currentMessage._id
+                      ? "⏸️"
+                      : "🔊"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+        </View>
+      );
+    },
+    [isPremium, playingMessageId, handlePlayVoice],
+  );
 
   const renderMessageText = useCallback(
     (props: any) => (

@@ -1,10 +1,10 @@
 /**
  * Feature Flags for MoodMateAI Pro
- * 
+ *
  * Centralized system to enable/disable features based on subscription tier
  */
 
-export type ProFeature = 
+export type ProFeature =
   | "voiceMessages"
   | "moodAnalytics"
   | "chatExport"

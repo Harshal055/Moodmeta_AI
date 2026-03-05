@@ -1,22 +1,22 @@
 /**
  * Chat Export Service
- * 
+ *
  * Exports chat conversations to PDF or text format
  * Pro feature only
  */
 
-import { Alert } from "react-native";
+import { Alert, Share } from "react-native";
 // @ts-ignore - FileSystem API
 import * as FileSystem from "expo-file-system";
-// @ts-ignore - Sharing types not available
-import * as Sharing from "expo-sharing";
 import { logger } from "./logger";
 
 // Get the document directory path
 // @ts-ignore
 const getDocumentDirectory = (): string => {
   // @ts-ignore
-  return FileSystem.documentDirectory || `${FileSystem.cacheDirectory}../Documents/`;
+  return (
+    FileSystem.documentDirectory || `${FileSystem.cacheDirectory}../Documents/`
+  );
 };
 
 export interface ChatMessage {
@@ -39,7 +39,9 @@ export const exportAsText = (
 
   messages.forEach((msg) => {
     const sender = msg.role === "user" ? userName : companionName;
-    const time = msg.timestamp ? `[${new Date(msg.timestamp).toLocaleTimeString()}] ` : "";
+    const time = msg.timestamp
+      ? `[${new Date(msg.timestamp).toLocaleTimeString()}] `
+      : "";
     text += `${time}${sender}:\n${msg.content}\n\n`;
   });
 
@@ -56,34 +58,23 @@ export const shareChat = async (
   format: "text" | "pdf" = "text",
 ): Promise<boolean> => {
   try {
-    const fileName = `${companionName}_chat_${new Date().toISOString().split("T")[0]}.${format === "text" ? "txt" : "pdf"}`;
-    const filePath = `${getDocumentDirectory()}${fileName}`;
-
     // Generate content
     const content = exportAsText(messages, companionName, userName);
 
-    // Write to file
-    await FileSystem.writeAsStringAsync(
-      filePath, 
-      content
-    );
+    // Use React Native's Share API (works on all platforms)
+    const result = await Share.share({
+      message: content,
+      title: `Chat with ${companionName}`,
+    });
 
-    // Share file
-    const isShareAvailable = await Sharing.isAvailableAsync();
-    if (isShareAvailable) {
-      await Sharing.shareAsync(filePath, {
-        mimeType: format === "text" ? "text/plain" : "application/pdf",
-        dialogTitle: `Share ${companionName} Chat`,
-      });
+    if (result.action === Share.sharedAction) {
       logger.info(`Chat exported as ${format}`);
       return true;
-    } else {
-      Alert.alert(
-        "Share Not Available",
-        "Your device doesn't support sharing. File saved locally.",
-      );
+    } else if (result.action === Share.dismissedAction) {
+      logger.info("Share dismissed");
       return false;
     }
+    return false;
   } catch (error: any) {
     logger.error("Error exporting chat:", error.message);
     Alert.alert("Export Failed", "Could not export chat. Please try again.");

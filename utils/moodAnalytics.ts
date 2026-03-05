@@ -1,6 +1,6 @@
 /**
  * Mood Analytics Service
- * 
+ *
  * Tracks user mood data and generates insights/trends
  * Pro feature only
  */
@@ -94,8 +94,10 @@ const getMostCommonMood = (entries: MoodEntry[]): string => {
     {} as Record<string, number>,
   );
 
-  return Object.entries(moodCounts).sort(([, a], [, b]) => b - a)[0]?.[0] ||
-    "neutral";
+  return (
+    Object.entries(moodCounts).sort(([, a], [, b]) => b - a)[0]?.[0] ||
+    "neutral"
+  );
 };
 
 /**
@@ -134,13 +136,17 @@ const getWeeklyPattern = (entries: MoodEntry[]): Record<string, number> => {
 /**
  * Calculate mood improvement trend
  */
-const calculateTrend = (entries: MoodEntry[]): "improving" | "declining" | "stable" => {
+const calculateTrend = (
+  entries: MoodEntry[],
+): "improving" | "declining" | "stable" => {
   if (entries.length < 7) return "stable";
 
-  const firstWeek = entries.slice(0, 7).reduce((sum, e) => sum + e.intensity, 0) / 7;
-  const lastWeek = entries
-    .slice(Math.max(0, entries.length - 7))
-    .reduce((sum, e) => sum + e.intensity, 0) / 7;
+  const firstWeek =
+    entries.slice(0, 7).reduce((sum, e) => sum + e.intensity, 0) / 7;
+  const lastWeek =
+    entries
+      .slice(Math.max(0, entries.length - 7))
+      .reduce((sum, e) => sum + e.intensity, 0) / 7;
 
   const diff = lastWeek - firstWeek;
 
