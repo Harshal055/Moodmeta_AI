@@ -35,6 +35,9 @@ import {
     getAIResponseStream,
     transcribeAudio,
 } from "../../services/openaiService";
+import { speakMessage, stopSpeech } from "../../utils/voiceService";
+import { shareChat, exportAsText } from "../../utils/chatExport";
+import { isFeatureEnabled } from "../../utils/featureFlags";
 import { logger } from "../../utils/logger";
 
 const FREE_MESSAGE_LIMIT = 20;
@@ -66,6 +69,8 @@ export default function ChatScreen() {
   } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const trackedSessionUserRef = useRef<string | null>(null);
 
@@ -643,33 +648,120 @@ export default function ChatScreen() {
   }
 
   // ── Custom UI Renders for GiftedChat (Memoized for Performance) ──
+  
+  // Voice message handler (Pro feature)
+  const handlePlayVoice = useCallback(
+    async (messageId: string, text: string) => {
+      if (!isPremium || !isFeatureEnabled("voiceMessages", isPremium)) return;
+      
+      try {
+        if (playingMessageId === messageId) {
+          await stopSpeech();
+          setPlayingMessageId(null);
+        } else {
+          setPlayingMessageId(messageId);
+          await speakMessage(text, { 
+            rate: 0.9, 
+            pitch: 1.1,
+            language: userLanguage === "Hinglish" ? "hi-IN" : "en-US"
+          });
+          setPlayingMessageId(null);
+        }
+      } catch (error) {
+        logger.error("Voice playback error:", error);
+        setPlayingMessageId(null);
+      }
+    },
+    [isPremium, playingMessageId, userLanguage]
+  );
+
+  // Chat export handler (Pro feature)
+  const handleExportChat = useCallback(async () => {
+    if (!isPremium || !isFeatureEnabled("chatExport", isPremium)) return;
+    
+    setIsExporting(true);
+    try {
+      const success = await shareChat(
+        messages.map(m => ({
+          role: m.user._id === 1 ? "user" : "assistant",
+          content: m.text,
+          timestamp: m.createdAt?.toISOString(),
+        })),
+        companionName,
+        profile?.name || "You"
+      );
+      
+      if (success) {
+        setErrorToast(null);
+      }
+    } catch (error) {
+      logger.error("Export chat error:", error);
+      setErrorToast("Failed to export chat");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isPremium, messages, companionName, profile?.name]);
+
   const renderBubble = useCallback((props: any) => {
+    const isAI = props.currentMessage.user._id === 2;
+    
     return (
-      <Bubble
-        {...props}
-        wrapperStyle={{
-          right: {
-            backgroundColor: "#D9EEFF", // Blue for user
-            borderTopRightRadius: 4,
-            borderTopLeftRadius: 20,
-            borderBottomRightRadius: 20,
-            borderBottomLeftRadius: 20,
-            padding: 4,
-            marginBottom: 4,
-          },
-          left: {
-            backgroundColor: "#FCDCE4", // Pink for AI
-            borderTopLeftRadius: 4,
-            borderTopRightRadius: 20,
-            borderBottomRightRadius: 20,
-            borderBottomLeftRadius: 20,
-            padding: 4,
-            marginBottom: 4,
-          },
-        }}
-      />
+      <View>
+        <Bubble
+          {...props}
+          wrapperStyle={{
+            right: {
+              backgroundColor: "#D9EEFF", // Blue for user
+              borderTopRightRadius: 4,
+              borderTopLeftRadius: 20,
+              borderBottomRightRadius: 20,
+              borderBottomLeftRadius: 20,
+              padding: 4,
+              marginBottom: 4,
+            },
+            left: {
+              backgroundColor: "#FCDCE4", // Pink for AI
+              borderTopLeftRadius: 4,
+              borderTopRightRadius: 20,
+              borderBottomRightRadius: 20,
+              borderBottomLeftRadius: 20,
+              padding: 4,
+              marginBottom: 4,
+            },
+          }}
+        />
+        {/* Voice playback button for AI messages (Pro feature) */}
+        {isAI && isPremium && isFeatureEnabled("voiceMessages", isPremium) && (
+          <TouchableOpacity
+            onPress={() =>
+              handlePlayVoice(props.currentMessage._id, props.currentMessage.text)
+            }
+            style={{
+              paddingLeft: 8,
+              marginBottom: 8,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: playingMessageId === props.currentMessage._id ? "#FF6B9D" : "#F0F0F0",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>
+                {playingMessageId === props.currentMessage._id ? "⏸️" : "🔊"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
     );
-  }, []);
+  }, [isPremium, playingMessageId, handlePlayVoice]);
 
   const renderMessageText = useCallback(
     (props: any) => (
@@ -811,6 +903,20 @@ export default function ChatScreen() {
             </View>
           </View>
           <View className="flex-row items-center gap-2">
+            {/* Export Chat Button (Pro feature) */}
+            {isPremium && isFeatureEnabled("chatExport", isPremium) && (
+              <TouchableOpacity
+                onPress={handleExportChat}
+                disabled={isExporting}
+                className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"
+              >
+                {isExporting ? (
+                  <ActivityIndicator size="small" color="#FF6B9D" />
+                ) : (
+                  <Text style={{ fontSize: 16 }}>📤</Text>
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => router.push("/(main)/settings")}
               className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"

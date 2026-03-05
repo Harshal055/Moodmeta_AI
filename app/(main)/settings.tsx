@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -14,6 +14,9 @@ import Purchases from "react-native-purchases";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
+import { isFeatureEnabled } from "../../utils/featureFlags";
+import { getMoodAnalytics } from "../../utils/moodAnalytics";
+import { getResourcesByCategory, getRecommendedResources } from "../../utils/wellnessResources";
 import { logger } from "../../utils/logger";
 
 // TODO: Replace these with your actual hosted URLs before submitting to stores
@@ -32,6 +35,9 @@ export default function SettingsScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [isClearingChat, setIsClearingChat] = useState(false);
+  const [moodAnalytics, setMoodAnalytics] = useState<any>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [wellnessResources, setWellnessResources] = useState<any[]>([]);
 
   const handleRestorePurchases = async () => {
     setIsRestoringPurchases(true);
@@ -122,6 +128,38 @@ export default function SettingsScreen() {
         },
       ],
     );
+  };
+
+  // Load mood analytics and wellness resources for Pro users
+  const loadProFeatures = async () => {
+    if (!user?.id || !isPremium) return;
+
+    try {
+      setLoadingAnalytics(true);
+      
+      // Load mood analytics if enabled
+      if (isFeatureEnabled("moodAnalytics", isPremium)) {
+        const analytics = await getMoodAnalytics(user.id);
+        setMoodAnalytics(analytics);
+      }
+
+      // Load wellness resources if enabled
+      if (isFeatureEnabled("wellnessResources", isPremium)) {
+        // Get recommended resources based on mood
+        const recommended = getRecommendedResources("stressed");
+        setWellnessResources(recommended || []);
+      }
+    } catch (error) {
+      logger.error("Error loading Pro features:", error);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  // Load Pro features when component mounts or user changes
+  useEffect(() => {
+    loadProFeatures();
+  }, [user?.id, isPremium]);
   };
 
   return (
@@ -339,6 +377,245 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </TouchableOpacity>
         </View>
+
+        {/* Mood Analytics Section (Pro feature) */}
+        {isPremium && isFeatureEnabled("moodAnalytics", isPremium) && (
+          <>
+            <Text
+              style={{
+                fontFamily: "Inter_500Medium",
+                fontSize: 13,
+                color: "#999",
+                marginBottom: 12,
+                marginLeft: 12,
+              }}
+            >
+              MOOD ANALYTICS
+            </Text>
+
+            <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8 p-4">
+              {loadingAnalytics ? (
+                <View className="items-center justify-center py-8">
+                  <ActivityIndicator size="large" color="#FF6B9D" />
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 8,
+                    }}
+                  >
+                    Loading your mood insights...
+                  </Text>
+                </View>
+              ) : moodAnalytics ? (
+                <View>
+                  <View className="mb-4">
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        fontSize: 14,
+                        color: "#1a1a2e",
+                        marginBottom: 8,
+                      }}
+                    >
+                      📊 30-Day Mood Trend
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "Inter_400Regular",
+                        fontSize: 12,
+                        color: "#666",
+                      }}
+                    >
+                      {moodAnalytics.improvementTrajectory || "No data yet"}
+                    </Text>
+                  </View>
+
+                  <View className="mb-4">
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        fontSize: 14,
+                        color: "#1a1a2e",
+                        marginBottom: 8,
+                      }}
+                    >
+                      😊 Most Common Mood
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "Inter_500Medium",
+                        fontSize: 13,
+                        color: "#FF6B9D",
+                      }}
+                    >
+                      {moodAnalytics.mostCommonMood || "Neutral"}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity className="bg-[#FFF8E1] rounded-lg p-3 items-center">
+                    <Text
+                      style={{
+                        fontFamily: "Inter_500Medium",
+                        fontSize: 12,
+                        color: "#F59E0B",
+                      }}
+                    >
+                      View Detailed Insights
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text
+                  style={{
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 12,
+                    color: "#888",
+                    textAlign: "center",
+                    paddingVertical: 16,
+                  }}
+                >
+                  Start logging moods to see insights 💭
+                </Text>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Wellness Resources Section (Pro feature) */}
+        {isPremium && isFeatureEnabled("wellnessResources", isPremium) && (
+          <>
+            <Text
+              style={{
+                fontFamily: "Inter_500Medium",
+                fontSize: 13,
+                color: "#999",
+                marginBottom: 12,
+                marginLeft: 12,
+              }}
+            >
+              WELLNESS HUB
+            </Text>
+
+            <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
+              {wellnessResources.length > 0 ? (
+                wellnessResources.slice(0, 3).map((resource, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    className={`flex-row items-center justify-between p-4 ${
+                      idx < wellnessResources.slice(0, 3).length - 1
+                        ? "border-b border-[#F5F5F5]"
+                        : ""
+                    }`}
+                  >
+                    <View className="flex-row items-center gap-3 flex-1">
+                      <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
+                        <Text style={{ fontSize: 18 }}>
+                          {resource.emoji || "💚"}
+                        </Text>
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          style={{
+                            fontFamily: "Inter_500Medium",
+                            fontSize: 14,
+                            color: "#1a1a2e",
+                          }}
+                        >
+                          {resource.title}
+                        </Text>
+                        <Text
+                          style={{
+                            fontFamily: "Inter_400Regular",
+                            fontSize: 11,
+                            color: "#888",
+                            marginTop: 2,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {resource.description}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="#ccc" />
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text
+                  style={{
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 12,
+                    color: "#888",
+                    textAlign: "center",
+                    paddingVertical: 16,
+                  }}
+                >
+                  Loading wellness resources... 🧘
+                </Text>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Pro Features Summary (for free users) */}
+        {!isPremium && (
+          <>
+            <Text
+              style={{
+                fontFamily: "Inter_500Medium",
+                fontSize: 13,
+                color: "#999",
+                marginBottom: 12,
+                marginLeft: 12,
+              }}
+            >
+              PRO FEATURES
+            </Text>
+
+            <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8 p-4">
+              <Text
+                style={{
+                  fontFamily: "Manrope_600SemiBold",
+                  fontSize: 14,
+                  color: "#1a1a2e",
+                  marginBottom: 8,
+                }}
+              >
+                Unlock Premium Benefits
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 12,
+                  color: "#666",
+                  marginBottom: 12,
+                  lineHeight: 18,
+                }}
+              >
+                • 🔊 Voice Messages - AI companion speaks{"\n"}
+                • 📊 Mood Analytics - 30-day insights{"\n"}
+                • 📤 Export Chats - Share conversations{"\n"}
+                • 🧘 Wellness Hub - Curated exercises{"\n"}
+                • 🎭 Custom Companions - Create your own
+              </Text>
+              <TouchableOpacity
+                className="bg-[#FF6B9D] rounded-lg py-3 items-center"
+                onPress={() => router.push("/(modals)/paywall")}
+              >
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    fontSize: 13,
+                    color: "white",
+                  }}
+                >
+                  Upgrade to Pro
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         {/* Danger Zone */}
         <Text
