@@ -1,59 +1,78 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import * as Notifications from "expo-notifications";
+import { Stack, useRouter } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect, useRef, useState } from "react";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import "../global.css";
+import { useAuth } from "../hooks/useAuth";
+import { revenueCatService } from "../services/revenueCatService";
 
-import { useColorScheme } from '@/components/useColorScheme';
+// ── Notification handler ────────────────────────────────────────────
+// This tells the OS what to do when a push notification arrives while
+// the app is in the FOREGROUND. Without this, foreground notifications
+// are silently dropped — the user sees nothing.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true, // Show the banner / heads-up notification
+    shouldPlaySound: true, // Play the default notification sound
+    shouldSetBadge: false, // We don't use badge counts in this app
+  }),
+});
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+  const router = useRouter();
+  const isInitialized = useAuth((s) => s.isInitialized);
+  const [rcInitialized, setRcInitialized] = useState(false);
+  const notificationResponseListener = useRef<Notifications.Subscription>();
 
   useEffect(() => {
-    if (loaded) {
+    // Initialize RevenueCat SDK early
+    if (!rcInitialized) {
+      revenueCatService.initialize();
+      setRcInitialized(true);
+    }
+
+    // Initialize anonymous auth immediately
+    if (!isInitialized) {
+      useAuth.getState().initialize();
+    }
+
+    // ── Listen for notification taps ──────────────────────────────
+    // When the user taps a push notification (whether the app was in
+    // the background or killed), this listener fires and we navigate
+    // them to the chat screen so they land in the right place.
+    notificationResponseListener.current =
+      Notifications.addNotificationResponseReceivedListener((_response) => {
+        router.push("/(main)/chat");
+      });
+
+    return () => {
+      if (notificationResponseListener.current) {
+        Notifications.removeNotificationSubscription(
+          notificationResponseListener.current,
+        );
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Hide splash screen only after auth is initialized
+    if (isInitialized) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  }, [isInitialized]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+    <ErrorBoundary>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(main)" />
+        <Stack.Screen name="(modals)" options={{ presentation: "modal" }} />
       </Stack>
-    </ThemeProvider>
+    </ErrorBoundary>
   );
 }
