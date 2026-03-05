@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Animated,
+  Easing,
   Platform,
   ScrollView,
   Text,
@@ -15,6 +16,14 @@ import Purchases, { PurchasesPackage } from "react-native-purchases";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { revenueCatService } from "../../services/revenueCatService";
+import { analyticsService } from "../../services/analyticsService";
+import { useAlert } from "../../components/CustomAlert";
+import {
+  retryWithBackoff,
+  getUserFriendlyErrorMessage,
+  getMonthlyEquivalent,
+} from "../../utils/purchaseUtils";
+import { logger } from "../../utils/logger";
 
 // TODO: Replace these with your actual hosted URLs before submitting to stores
 const PRIVACY_POLICY_URL =
@@ -62,6 +71,8 @@ const PAYWALL_CONFIG = {
 export default function PaywallScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const alert = useAlert();
+  const user = useAuth((state) => state.currentUser);
 
   const [selectedPackage, setSelectedPackage] = useState<"monthly" | "yearly">(
     PAYWALL_CONFIG.defaultPlan,
@@ -69,6 +80,12 @@ export default function PaywallScreen() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [isLoadingOfferings, setIsLoadingOfferings] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Animation refs
+  const slideUpAnim = useRef(new Animated.Value(100)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   // RevenueCat packages
   const [packages, setPackages] = useState<{
@@ -78,16 +95,40 @@ export default function PaywallScreen() {
 
   useEffect(() => {
     fetchOfferings();
+    trackPaywallView();
+
+    // Animate in
+    Animated.parallel([
+      Animated.timing(slideUpAnim, {
+        toValue: 0,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 8,
+      }),
+    ]).start();
   }, []);
+
+  const trackPaywallView = async () => {
+    if (user?.id) {
+      await analyticsService.trackPaywallImpression(user.id);
+    }
+  };
 
   const fetchOfferings = async () => {
     setIsLoadingOfferings(true);
+    setPurchaseError(null);
     try {
       const offerings = await Purchases.getOfferings();
-
-      // Always use the "current" offering configured in RevenueCat dashboard.
-      // Hardcoding an offering ID (e.g. "ofrng276d5a1129") breaks when you
-      // rename or recreate offerings in the dashboard.
       const targetOffering = offerings.current;
 
       if (targetOffering !== null && targetOffering !== undefined) {
@@ -95,17 +136,23 @@ export default function PaywallScreen() {
           monthly: targetOffering.monthly,
           yearly: targetOffering.annual,
         });
-        setPurchaseError(null);
       } else {
-        console.log(
+        logger.warn(
           "No valid offering found (checked 'ofrng276d5a1129' and 'current')",
         );
         setPurchaseError(
           "Plans are temporarily unavailable. Please try again in a moment.",
         );
+        alert.show({
+          type: "error",
+          title: "Plans Unavailable",
+          message:
+            "Could not load subscription plans. Please check that the offering is set to CURRENT in RevenueCat.",
+          buttons: [{ text: "Dismiss", style: "default" }],
+        });
       }
     } catch (e) {
-      console.error("Error fetching offerings", e);
+      logger.error("Error fetching offerings:", e);
       setPurchaseError(
         "Could not load subscription plans. Check internet and try again.",
       );
@@ -115,44 +162,142 @@ export default function PaywallScreen() {
   };
 
   const handlePurchase = async () => {
+    if (!user?.id) {
+      alert.show({
+        type: "error",
+        title: "Not Logged In",
+        message: "Please log in to purchase a subscription.",
+        buttons: [{ text: "OK", style: "default" }],
+      });
+      return;
+    }
+
     setPurchaseError(null);
     setIsPurchasing(true);
+
     try {
       const pkgToBuy =
         selectedPackage === "monthly" ? packages.monthly : packages.yearly;
 
-      if (pkgToBuy) {
-        const { customerInfo } = await Purchases.purchasePackage(pkgToBuy);
-        const isPremium = revenueCatService.checkEntitlement(customerInfo);
-        if (isPremium) {
-          useAuth.setState({ isPremium: true });
-          router.replace("/(modals)/upgrade-success");
-          return;
-        }
-        setPurchaseError(
-          "Purchase completed but premium was not activated yet. Tap Restore Purchases.",
-        );
-        Alert.alert(
-          "Activation Pending",
-          "Purchase completed but premium was not activated yet. Please tap Restore Purchases.",
-        );
-      } else {
+      if (!pkgToBuy) {
         setPurchaseError(
           "Selected plan is unavailable. Please refresh and try again.",
         );
-        Alert.alert(
-          "Plan Unavailable",
-          "Selected plan is unavailable right now. Please try again.",
-        );
+        alert.show({
+          type: "warning",
+          title: "Plan Unavailable",
+          message: "The selected plan is not available. Please try refreshing.",
+          buttons: [
+            {
+              text: "Refresh Plans",
+              onPress: () => fetchOfferings(),
+              style: "default",
+            },
+          ],
+        });
+        setIsPurchasing(false);
+        return;
       }
+
+      // Use retry logic for purchase
+      const { customerInfo } = await retryWithBackoff(
+        () => Purchases.purchasePackage(pkgToBuy),
+        { maxAttempts: 3 },
+      );
+
+      const isPremium = revenueCatService.checkEntitlement(customerInfo);
+
+      if (isPremium) {
+        // Track successful purchase
+        await analyticsService.trackPurchase({
+          userId: user.id,
+          productId: pkgToBuy.product.identifier,
+          currency: pkgToBuy.product.currencyCode,
+          amount: parseFloat(pkgToBuy.product.priceString || "0"),
+          transactionId: customerInfo.originalPurchaseDate ?? undefined,
+          revenueCatId: customerInfo.originalAppUserId,
+        });
+
+        // Update app state
+        useAuth.setState({ isPremium: true });
+
+        // Show success
+        alert.show({
+          type: "success",
+          title: "Welcome to Pro!",
+          message: "💫 All premium features unlocked. Enjoy!",
+          duration: 1500,
+        });
+
+        // Redirect after animation
+        setTimeout(() => {
+          router.replace("/(modals)/upgrade-success");
+        }, 1500);
+        return;
+      }
+
+      // Premium not activated immediately (might need to restore)
+      setPurchaseError(
+        "Purchase completed but premium was not activated yet. Tap Restore Purchases.",
+      );
+      alert.show({
+        type: "warning",
+        title: "Activation Pending",
+        message:
+          "Purchase completed but premium wasn't activated. Please tap Restore Purchases.",
+        buttons: [
+          {
+            text: "Restore Purchases",
+            onPress: handleRestore,
+            style: "default",
+          },
+          { text: "Dismiss", style: "default" },
+        ],
+      });
     } catch (e: any) {
-      if (!e.userCancelled) {
-        console.error("Purchase error", e);
-        const message =
-          e.message ||
-          "An unknown error occurred while trying to process your purchase. Please try again.";
-        setPurchaseError(message);
-        Alert.alert("Purchase Failed", message);
+      if (e?.userCancelled) {
+        // User intentionally cancelled, don't log as error
+        logger.debug("User cancelled purchase");
+        await analyticsService.trackPaywallDismiss(user.id, "user_cancelled");
+      } else {
+        logger.error("Purchase error:", e);
+        const friendlyMessage = getUserFriendlyErrorMessage(e, "purchase");
+
+        // Track failure
+        await analyticsService.trackPurchaseError(
+          user.id,
+          selectedPackage,
+          e?.message || "Unknown error",
+        );
+
+        setPurchaseError(friendlyMessage);
+
+        // Show appropriate alert based on error type
+        const isNetwork = e?.message?.includes("network");
+        const isBilling = e?.message?.includes("billing");
+
+        alert.show({
+          type: "error",
+          title: isNetwork
+            ? "Connection Error"
+            : isBilling
+              ? "Payment Failed"
+              : "Purchase Error",
+          message: friendlyMessage,
+          buttons: [
+            retryCount < 2
+              ? {
+                  text: "Retry",
+                  onPress: () => {
+                    setRetryCount(retryCount + 1);
+                    handlePurchase();
+                  },
+                  style: "default",
+                }
+              : undefined,
+            { text: "Dismiss", style: "default" },
+          ].filter(Boolean) as any[],
+        });
       }
     } finally {
       setIsPurchasing(false);
@@ -167,24 +312,41 @@ export default function PaywallScreen() {
 
       if (isPremium) {
         useAuth.setState({ isPremium: true });
-        Alert.alert(
-          "Purchases Restored",
-          "Welcome back! Your Pro subscription has been restored.",
-          [{ text: "Continue", onPress: () => router.back() }],
-        );
+        alert.show({
+          type: "success",
+          title: "Purchases Restored",
+          message: "Welcome back! Your Pro subscription has been restored.",
+          buttons: [
+            {
+              text: "Continue",
+              onPress: () => router.back(),
+              style: "default",
+            },
+          ],
+          duration: 2000,
+        });
       } else {
-        Alert.alert(
-          "No Subscription Found",
-          "We couldn't find an active Pro subscription linked to this Apple/Google account.",
-        );
+        alert.show({
+          type: "info",
+          title: "No Subscription Found",
+          message:
+            "We couldn't find an active Pro subscription linked to this Apple/Google account.",
+          buttons: [{ text: "OK", style: "default" }],
+        });
       }
     } catch (e: any) {
-      console.error("Restore error", e);
-      Alert.alert(
-        "Restore Failed",
-        e.message ||
-          "An error occurred while trying to restore your purchases.",
-      );
+      logger.error("Restore error:", e);
+      const friendlyMessage = getUserFriendlyErrorMessage(e, "restore");
+
+      alert.show({
+        type: "error",
+        title: "Restore Failed",
+        message: friendlyMessage,
+        buttons: [
+          { text: "Retry", onPress: handleRestore, style: "default" },
+          { text: "Dismiss", style: "cancel" },
+        ],
+      });
     } finally {
       setIsPurchasing(false);
     }
@@ -196,12 +358,27 @@ export default function PaywallScreen() {
   const monthlyPrice = packages.monthly?.product.priceString || "—";
   const yearlyPrice = packages.yearly?.product.priceString || "—";
 
+  // Calculate value comparison
+  const monthlyPriceNum = packages.monthly?.product.price || 9.99;
+  const yearlyPriceNum = packages.yearly?.product.price || 69.99;
+  const monthlyEquivalent = getMonthlyEquivalent(yearlyPriceNum);
+  const savingsPercentage = Math.round(
+    ((monthlyPriceNum * 12 - yearlyPriceNum) / (monthlyPriceNum * 12)) * 100,
+  );
+
   return (
-    <ScrollView
-      className="flex-1 bg-white"
-      contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
-      showsVerticalScrollIndicator={false}
+    <Animated.View
+      style={{
+        transform: [{ translateY: slideUpAnim }],
+        opacity: fadeAnim,
+        flex: 1,
+      }}
     >
+      <ScrollView
+        className="flex-1 bg-white"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        showsVerticalScrollIndicator={false}
+      >
       <View
         style={{ paddingTop: Platform.OS === "ios" ? 20 : insets.top + 20 }}
         className="px-6 flex-1 mt-4"
@@ -294,7 +471,12 @@ export default function PaywallScreen() {
 
         {/* Yearly Option */}
         <View className="mb-8">
-          <View className="absolute z-10 -top-3 w-full items-center">
+          <Animated.View
+            className="absolute z-10 -top-3 w-full items-center"
+            style={{
+              transform: [{ scale: scaleAnim }],
+            }}
+          >
             <View className="bg-[#E6F8EB] px-3 py-1 rounded-full border border-[#C6ECCC]">
               <Text
                 style={{
@@ -303,16 +485,16 @@ export default function PaywallScreen() {
                   color: "#147039",
                 }}
               >
-                {PAYWALL_CONFIG.yearly.badge}
+                {PAYWALL_CONFIG.yearly.badge} • Save {savingsPercentage}%
               </Text>
             </View>
-          </View>
+          </Animated.View>
           <TouchableOpacity
             onPress={() => setSelectedPackage("yearly")}
-            className={`p-4 pt-5 rounded-xl border-2 bg-white ${selectedPackage === "yearly" ? "border-black" : "border-gray-100"}`}
+            className={`p-4 pt-5 rounded-xl border-2 bg-white transition-all ${selectedPackage === "yearly" ? "border-black shadow-lg" : "border-gray-100"}`}
           >
             <View className="flex-row justify-between items-center">
-              <View>
+              <View className="flex-1">
                 <Text
                   style={{
                     fontFamily: "Inter_500Medium",
@@ -330,18 +512,30 @@ export default function PaywallScreen() {
                     marginTop: 2,
                   }}
                 >
-                  Billed as {yearlyPrice}/yr
+                  {yearlyPrice}/yr (${monthlyEquivalent.toFixed(2)}/mo)
                 </Text>
               </View>
-              <Text
-                style={{
-                  fontFamily: "Manrope_700Bold",
-                  fontSize: 18,
-                  color: "#000",
-                }}
-              >
-                {yearlyPrice}
-              </Text>
+              <View className="items-end">
+                <Text
+                  style={{
+                    fontFamily: "Manrope_700Bold",
+                    fontSize: 18,
+                    color: "#000",
+                  }}
+                >
+                  {yearlyPrice}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 10,
+                    color: "#10B981",
+                    marginTop: 2,
+                  }}
+                >
+                  Best Value ✓
+                </Text>
+              </View>
             </View>
           </TouchableOpacity>
         </View>
@@ -474,5 +668,6 @@ export default function PaywallScreen() {
         </View>
       </View>
     </ScrollView>
+    </Animated.View>
   );
 }
