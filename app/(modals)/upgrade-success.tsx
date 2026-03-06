@@ -9,8 +9,8 @@ import {
     View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { logger } from "../utils/logger";
-import { requestReviewPostPurchase } from "../utils/purchaseUtils";
+import { logger } from "../../utils/logger";
+import { requestReviewPostPurchase } from "../../utils/purchaseUtils";
 
 export default function UpgradeSuccessScreen() {
   const router = useRouter();
