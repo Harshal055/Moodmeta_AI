@@ -1,23 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Purchases from "react-native-purchases";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import { isFeatureEnabled } from "../../utils/featureFlags";
-import { getMoodAnalytics } from "../../utils/moodAnalytics";
-import { getResourcesByCategory, getRecommendedResources } from "../../utils/wellnessResources";
 import { logger } from "../../utils/logger";
+import { getMoodAnalytics } from "../../utils/moodAnalytics";
+import {
+  getRecommendedResources
+} from "../../utils/wellnessResources";
 
 // TODO: Replace these with your actual hosted URLs before submitting to stores
 const PRIVACY_POLICY_URL =
@@ -65,8 +67,8 @@ export default function SettingsScreen() {
     Alert.alert(
       "Clear Chat History",
       "This will delete all your chats with " +
-        (profile?.companion_name || "your companion") +
-        ". Your companion will remember you, but the conversation history will be gone.",
+      (profile?.companion_name || "your companion") +
+      ". Your companion will remember you, but the conversation history will be gone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -136,7 +138,7 @@ export default function SettingsScreen() {
 
     try {
       setLoadingAnalytics(true);
-      
+
       // Load mood analytics if enabled
       if (isFeatureEnabled("moodAnalytics", isPremium)) {
         const analytics = await getMoodAnalytics(user.id);
@@ -272,110 +274,315 @@ export default function SettingsScreen() {
           SUBSCRIPTION
         </Text>
 
-        <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4 border-b border-[#F5F5F5]"
-            onPress={() => router.push("/(modals)/paywall")}
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-full bg-[#FFF8E1] items-center justify-center">
-                <Text style={{ fontSize: 18 }}>👑</Text>
-              </View>
-              <View>
-                <Text
+        {/* Pro Status Card (when subscribed) */}
+        {isPremium ? (
+          <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
+            <View
+              style={{
+                backgroundColor: "#F0FDF4",
+                padding: 20,
+                borderBottomWidth: 1,
+                borderBottomColor: "#E5F5E0",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      backgroundColor: "#10B981",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={28} color="#fff" />
+                  </View>
+                  <View>
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_700Bold",
+                        fontSize: 18,
+                        color: "#065F46",
+                      }}
+                    >
+                      MoodMate Pro
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "Inter_400Regular",
+                        fontSize: 12,
+                        color: "#10B981",
+                        marginTop: 2,
+                      }}
+                    >
+                      ✨ All premium features unlocked
+                    </Text>
+                  </View>
+                </View>
+                <View
                   style={{
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 16,
-                    color: "#1a1a2e",
+                    backgroundColor: "#10B981",
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 12,
                   }}
                 >
-                  {isPremium ? "Upgrade Plan" : "Go Premium"}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: "#888",
-                    marginTop: 2,
-                  }}
-                >
-                  ₹99/mo, ₹799/yr, or ₹2,999 lifetime
-                </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_500Medium",
+                      fontSize: 11,
+                      color: "#fff",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    ACTIVE
+                  </Text>
+                </View>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4 border-b border-[#F5F5F5]"
-            onPress={handleRestorePurchases}
-            disabled={isRestoringPurchases}
-          >
-            <View className="flex-row items-center gap-3 flex-1">
-              <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
-                {isRestoringPurchases ? (
-                  <ActivityIndicator size="small" color="#7C3AED" />
-                ) : (
-                  <Ionicons name="download-outline" size={20} color="#7C3AED" />
-                )}
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: "#F5F5F5",
+              }}
+              onPress={() => Linking.openURL("https://play.google.com/store/account/subscriptions")}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View className="w-10 h-10 rounded-full bg-[#F0F8FF] items-center justify-center">
+                  <Ionicons name="settings-outline" size={20} color="#0066CC" />
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_500Medium",
+                      fontSize: 15,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    Manage Subscription
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 2,
+                    }}
+                  >
+                    Cancel, change plan, or billing info
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text
-                  style={{
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 16,
-                    color: "#1a1a2e",
-                  }}
-                >
-                  Restore Purchases
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: "#888",
-                    marginTop: 2,
-                  }}
-                >
-                  Re-sync premium on new device
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4"
-            onPress={() => router.push("/(modals)/link-account")}
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-full bg-[#F0F8FF] items-center justify-center">
-                <Ionicons name="link" size={20} color="#0066CC" />
+            <TouchableOpacity
+              className="flex-row items-center justify-between p-4"
+              onPress={handleRestorePurchases}
+              disabled={isRestoringPurchases}
+            >
+              <View className="flex-row items-center gap-3 flex-1">
+                <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
+                  {isRestoringPurchases ? (
+                    <ActivityIndicator size="small" color="#7C3AED" />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color="#7C3AED" />
+                  )}
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_500Medium",
+                      fontSize: 15,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    Restore Purchases
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 2,
+                    }}
+                  >
+                    Re-sync premium on new device
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
+            {/* Upgrade CTA */}
+            <TouchableOpacity
+              style={{
+                padding: 20,
+              }}
+              onPress={() => router.push("/(modals)/paywall")}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <View
                   style={{
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 16,
-                    color: "#1a1a2e",
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    backgroundColor: "#FFF8E1",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  Link Account
-                </Text>
+                  <Text style={{ fontSize: 24 }}>👑</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_700Bold",
+                      fontSize: 18,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    Go Premium
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 2,
+                    }}
+                  >
+                    Starting at ₹83/mo with annual plan
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </View>
+
+              {/* Quick Feature Highlights */}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                {["Unlimited AI Chats", "Zero Ads", "Voice Messages", "Mood Analytics"].map((feat) => (
+                  <View
+                    key={feat}
+                    style={{
+                      backgroundColor: "#F8F9FA",
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 20,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "Inter_400Regular",
+                        fontSize: 11,
+                        color: "#666",
+                      }}
+                    >
+                      ✓ {feat}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* CTA Button */}
+              <View
+                style={{
+                  backgroundColor: "#1a1a2e",
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                }}
+              >
                 <Text
                   style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: "#888",
-                    marginTop: 2,
+                    fontFamily: "Manrope_700Bold",
+                    fontSize: 15,
+                    color: "#fff",
                   }}
                 >
-                  Save across devices
+                  Upgrade Now — Save 58%
                 </Text>
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-        </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="flex-row items-center justify-between p-4 border-t border-[#F5F5F5]"
+              onPress={handleRestorePurchases}
+              disabled={isRestoringPurchases}
+            >
+              <View className="flex-row items-center gap-3 flex-1">
+                <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
+                  {isRestoringPurchases ? (
+                    <ActivityIndicator size="small" color="#7C3AED" />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color="#7C3AED" />
+                  )}
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_500Medium",
+                      fontSize: 15,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    Restore Purchases
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 2,
+                    }}
+                  >
+                    Re-sync premium on new device
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="flex-row items-center justify-between p-4 border-t border-[#F5F5F5]"
+              onPress={() => router.push("/(modals)/link-account")}
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="w-10 h-10 rounded-full bg-[#F0F8FF] items-center justify-center">
+                  <Ionicons name="link" size={20} color="#0066CC" />
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_500Medium",
+                      fontSize: 15,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    Link Account
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 2,
+                    }}
+                  >
+                    Save across devices
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Mood Analytics Section (Pro feature) */}
         {isPremium && isFeatureEnabled("moodAnalytics", isPremium) && (
@@ -502,11 +709,10 @@ export default function SettingsScreen() {
                 wellnessResources.slice(0, 3).map((resource, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    className={`flex-row items-center justify-between p-4 ${
-                      idx < wellnessResources.slice(0, 3).length - 1
+                    className={`flex-row items-center justify-between p-4 ${idx < wellnessResources.slice(0, 3).length - 1
                         ? "border-b border-[#F5F5F5]"
                         : ""
-                    }`}
+                      }`}
                   >
                     <View className="flex-row items-center gap-3 flex-1">
                       <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
@@ -592,11 +798,10 @@ export default function SettingsScreen() {
                   lineHeight: 18,
                 }}
               >
-                • 🔊 Voice Messages - AI companion speaks{"\n"}
-                • 📊 Mood Analytics - 30-day insights{"\n"}
-                • 📤 Export Chats - Share conversations{"\n"}
-                • 🧘 Wellness Hub - Curated exercises{"\n"}
-                • 🎭 Custom Companions - Create your own
+                • 🔊 Voice Messages - AI companion speaks{"\n"}• 📊 Mood
+                Analytics - 30-day insights{"\n"}• 📤 Export Chats - Share
+                conversations{"\n"}• 🧘 Wellness Hub - Curated exercises{"\n"}•
+                🎭 Custom Companions - Create your own
               </Text>
               <TouchableOpacity
                 className="bg-[#FF6B9D] rounded-lg py-3 items-center"

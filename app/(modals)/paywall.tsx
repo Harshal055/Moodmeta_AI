@@ -23,9 +23,8 @@ import { analyticsService } from "../../services/analyticsService";
 import { revenueCatService } from "../../services/revenueCatService";
 import { logger } from "../../utils/logger";
 import {
-  getMonthlyEquivalent,
   getUserFriendlyErrorMessage,
-  retryWithBackoff,
+  retryWithBackoff
 } from "../../utils/purchaseUtils";
 
 // TODO: Replace these with your actual hosted URLs before submitting to stores
@@ -296,13 +295,13 @@ export default function PaywallScreen() {
           buttons: [
             retryCount < 2
               ? {
-                  text: "Retry",
-                  onPress: () => {
-                    setRetryCount(retryCount + 1);
-                    handlePurchase();
-                  },
-                  style: "default",
-                }
+                text: "Retry",
+                onPress: () => {
+                  setRetryCount(retryCount + 1);
+                  handlePurchase();
+                },
+                style: "default",
+              }
               : undefined,
             { text: "Dismiss", style: "default" },
           ].filter(Boolean) as any[],
@@ -363,12 +362,7 @@ export default function PaywallScreen() {
 
   // Helper functions for dynamic package info
   const getPackageLabel = (pkg: PurchasesPackage): string => {
-    // Use product title from store if available, otherwise fallback to identifier
-    if (pkg.product.title && pkg.product.title !== pkg.product.identifier) {
-      return pkg.product.title;
-    }
-
-    // Fallback to type-based labels
+    // Always use clean type-based labels (raw Google Play titles contain package names)
     switch (pkg.packageType) {
       case PACKAGE_TYPE.ANNUAL:
         return "Annual Plan";
@@ -390,36 +384,28 @@ export default function PaywallScreen() {
   };
 
   const getPackageHelper = (pkg: PurchasesPackage): string => {
-    // Use product description from store if available
-    if (
-      pkg.product.description &&
-      pkg.product.description !== pkg.product.identifier
-    ) {
-      return pkg.product.description;
-    }
-
-    // Check for intro price/trial
+    // Check for intro price/trial first
     const intro = pkg.product.introPrice;
     if (intro) {
       const period = intro.periodUnit;
       const periodCount = Number(intro.cycles || intro.period || 1);
 
       if (intro.price === 0 || intro.priceString === "$0.00") {
-        return `Free for ${periodCount} ${period}${periodCount > 1 ? "s" : ""}`;
+        return `Free for ${periodCount} ${period}${periodCount > 1 ? "s" : ""}, then auto-renews`;
       }
       return `${intro.priceString} for ${periodCount} ${period}${periodCount > 1 ? "s" : ""}`;
     }
 
-    // Fallback to package type description
+    // Use clean descriptions based on package type
     switch (pkg.packageType) {
       case PACKAGE_TYPE.ANNUAL:
         return "Best value • Billed yearly";
       case PACKAGE_TYPE.MONTHLY:
-        return "Flexible monthly billing";
+        return "Cancel anytime • Billed monthly";
       case PACKAGE_TYPE.WEEKLY:
         return "Billed weekly";
       case PACKAGE_TYPE.LIFETIME:
-        return "One-time payment";
+        return "One-time payment • Forever";
       default:
         return "Subscribe now";
     }
@@ -472,10 +458,7 @@ export default function PaywallScreen() {
     packageIndex: number,
     comparisonIndex: number,
   ): number => {
-    if (
-      packageIndex >= packages.length ||
-      comparisonIndex >= packages.length
-    ) {
+    if (packageIndex >= packages.length || comparisonIndex >= packages.length) {
       return 0;
     }
 
@@ -662,15 +645,16 @@ export default function PaywallScreen() {
                           transform: [{ scale: scaleAnim }],
                         }}
                       >
-                        <View className="bg-[#E6F8EB] px-3 py-1 rounded-full border border-[#C6ECCC]">
+                        <View className="bg-[#E6F8EB] px-4 py-1.5 rounded-full border border-[#C6ECCC]">
                           <Text
                             style={{
                               fontFamily: "Inter_500Medium",
-                              fontSize: 10,
+                              fontSize: 11,
                               color: "#147039",
+                              letterSpacing: 0.5,
                             }}
                           >
-                            BEST VALUE
+                            🔥 BEST VALUE
                             {savingsVsMonthly > 0 &&
                               ` • Save ${savingsVsMonthly}%`}
                           </Text>
@@ -681,11 +665,19 @@ export default function PaywallScreen() {
                     {/* Package Card */}
                     <TouchableOpacity
                       onPress={() => setSelectedPackageIndex(index)}
-                      className={`p-4 ${isBestValue ? "pt-5" : ""} rounded-xl border-2 bg-white ${
-                        isSelected
-                          ? "border-black shadow-lg"
-                          : "border-gray-100"
-                      }`}
+                      style={{
+                        padding: 16,
+                        paddingTop: isBestValue ? 24 : 16,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor: isSelected
+                          ? (isBestValue ? "#10B981" : "#000")
+                          : (isBestValue ? "#C6ECCC" : "#f3f4f6"),
+                        backgroundColor: isSelected
+                          ? (isBestValue ? "#F0FDF4" : "#fff")
+                          : (isBestValue ? "#FAFFFE" : "#fff"),
+                        ...(isSelected ? { shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 } : {}),
+                      }}
                     >
                       <View className="flex-row justify-between items-center">
                         <View className="flex-1 pr-4">
@@ -708,6 +700,31 @@ export default function PaywallScreen() {
                           >
                             {getPackageHelper(pkg)}
                           </Text>
+                          {/* Show per-month price for annual plan */}
+                          {pkg.packageType === PACKAGE_TYPE.ANNUAL && monthlyPackageIndex >= 0 && (
+                            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8 }}>
+                              <Text
+                                style={{
+                                  fontFamily: "Manrope_600SemiBold",
+                                  fontSize: 13,
+                                  color: "#10B981",
+                                }}
+                              >
+                                {pkg.product.currencyCode}{" "}
+                                {(pkg.product.price / 12).toFixed(0)}/mo
+                              </Text>
+                              <Text
+                                style={{
+                                  fontFamily: "Inter_400Regular",
+                                  fontSize: 11,
+                                  color: "#aaa",
+                                  textDecorationLine: "line-through",
+                                }}
+                              >
+                                {packages[monthlyPackageIndex]?.product.priceString}/mo
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <View className="items-end">
                           <Text
@@ -719,7 +736,7 @@ export default function PaywallScreen() {
                           >
                             {pkg.product.priceString}
                           </Text>
-                          {isBestValue && (
+                          {pkg.packageType === PACKAGE_TYPE.ANNUAL ? (
                             <Text
                               style={{
                                 fontFamily: "Inter_400Regular",
@@ -728,9 +745,20 @@ export default function PaywallScreen() {
                                 marginTop: 2,
                               }}
                             >
-                              Best Value ✓
+                              per year ✓
                             </Text>
-                          )}
+                          ) : pkg.packageType === PACKAGE_TYPE.MONTHLY ? (
+                            <Text
+                              style={{
+                                fontFamily: "Inter_400Regular",
+                                fontSize: 10,
+                                color: "#888",
+                                marginTop: 2,
+                              }}
+                            >
+                              per month
+                            </Text>
+                          ) : null}
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -759,7 +787,9 @@ export default function PaywallScreen() {
           {/* CTA Button */}
           <TouchableOpacity
             onPress={handlePurchase}
-            disabled={isPurchasing || isLoadingOfferings || packages.length === 0}
+            disabled={
+              isPurchasing || isLoadingOfferings || packages.length === 0
+            }
             className="w-full bg-black py-4 rounded-full items-center justify-center mt-6 mb-3"
           >
             {isPurchasing || isLoadingOfferings ? (

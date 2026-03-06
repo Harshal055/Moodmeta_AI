@@ -33,33 +33,46 @@ export const speakMessage = async (
   text: string,
   options: VoiceOptions = DEFAULT_VOICE_OPTIONS,
 ): Promise<void> => {
-  try {
-    // Validate input
-    if (!text || text.trim().length === 0) {
-      logger.warn("Cannot speak empty message");
-      return;
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Validate input
+      if (!text || text.trim().length === 0) {
+        logger.warn("Cannot speak empty message");
+        resolve();
+        return;
+      }
+
+      // Check if speech is available
+      const available = await Speech.isSpeakingAsync();
+      if (available) {
+        // Stop current speech first
+        await Speech.stop();
+      }
+
+      // Speak the message with callbacks
+      Speech.speak(text, {
+        rate: options.rate || DEFAULT_VOICE_OPTIONS.rate!,
+        pitch: options.pitch || DEFAULT_VOICE_OPTIONS.pitch!,
+        volume: options.volume || DEFAULT_VOICE_OPTIONS.volume!,
+        language: options.language || DEFAULT_VOICE_OPTIONS.language!,
+        onDone: () => {
+          logger.info("Voice message played successfully");
+          resolve();
+        },
+        onError: (error: Error) => {
+          logger.error("Error playing voice message:", error.message);
+          reject(error);
+        },
+        onStopped: () => {
+          logger.info("Voice message stopped manually");
+          resolve();
+        }
+      });
+    } catch (error: any) {
+      logger.error("Error starting voice message:", error.message);
+      reject(error);
     }
-
-    // Check if speech is available
-    const available = await Speech.isSpeakingAsync();
-    if (available) {
-      // Stop current speech first
-      await Speech.stop();
-    }
-
-    // Speak the message
-    await Speech.speak(text, {
-      rate: options.rate || DEFAULT_VOICE_OPTIONS.rate!,
-      pitch: options.pitch || DEFAULT_VOICE_OPTIONS.pitch!,
-      volume: options.volume || DEFAULT_VOICE_OPTIONS.volume!,
-      language: options.language || DEFAULT_VOICE_OPTIONS.language!,
-    });
-
-    logger.info("Voice message played successfully");
-  } catch (error: any) {
-    logger.error("Error playing voice message:", error.message);
-    throw error;
-  }
+  });
 };
 
 /**

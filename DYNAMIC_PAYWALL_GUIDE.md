@@ -12,6 +12,7 @@ Your paywall is now **fully dynamic** and follows RevenueCat best practices. All
 ### ✅ What This Means
 
 **You can now change from the RevenueCat dashboard:**
+
 - Product prices ($9.99 → $12.99, etc.)
 - Trial durations (3 days, 7 days, 14 days, or none)
 - Number of products (2, 3, 4+ subscription tiers)
@@ -84,11 +85,13 @@ packages.sort((a, b) => {
 const getPackageLabel = (pkg: PurchasesPackage): string => {
   // Use store product title if available
   if (pkg.product.title) return pkg.product.title;
-  
+
   // Fallback to type-based labels
   switch (pkg.packageType) {
-    case PACKAGE_TYPE.ANNUAL: return "Annual Plan";
-    case PACKAGE_TYPE.MONTHLY: return "Monthly Plan";
+    case PACKAGE_TYPE.ANNUAL:
+      return "Annual Plan";
+    case PACKAGE_TYPE.MONTHLY:
+      return "Monthly Plan";
     // ... handles all types
   }
 };
@@ -102,7 +105,7 @@ const intro = pkg.product.introPrice;
 if (intro && intro.price === 0) {
   const period = intro.periodUnit; // "day", "week", "month"
   const periodCount = intro.cycles; // 3, 7, 14, etc.
-  
+
   return `Free for ${periodCount} ${period}s`;
 }
 ```
@@ -133,12 +136,14 @@ const bestIndex = packages.reduce((bestIdx, pkg, idx) => {
 ### Example 1: Change Trial Duration
 
 **RevenueCat Dashboard:**
+
 1. Go to Products → Your Product
 2. Edit "Introductory Offer"
 3. Set to "7 days free"
 4. Save
 
 **Result in App:**
+
 - CTA button: "Start 7-day Free Trial" ✅
 - Package helper: "Free for 7 days" ✅
 - Zero code changes needed
@@ -148,12 +153,14 @@ const bestIndex = packages.reduce((bestIdx, pkg, idx) => {
 ### Example 2: Add a 6-Month Plan
 
 **RevenueCat Dashboard:**
+
 1. Create new product in App Store Connect: `mood-buddy-pro-sixmonth`
 2. Set price: $39.99
 3. Add to RevenueCat offering
 4. Set offering to CURRENT
 
 **Result in App:**
+
 - Automatically displays 3 packages ✅
 - Calculates $6.67/month equivalent ✅
 - Shows "Save 33%" if cheaper than monthly ✅
@@ -164,12 +171,14 @@ const bestIndex = packages.reduce((bestIdx, pkg, idx) => {
 ### Example 3: Change Pricing
 
 **RevenueCat Dashboard:**
+
 1. App Store Connect → Products → Edit Price
 2. Change monthly from $9.99 → $12.99
 3. Change annual from $69.99 → $79.99
 4. Submit for review
 
 **Result in App:**
+
 - Displays new prices immediately ✅
 - Recalculates savings percentage ✅
 - Currency formatting automatic ✅
@@ -180,11 +189,13 @@ const bestIndex = packages.reduce((bestIdx, pkg, idx) => {
 ### Example 4: Remove Trial
 
 **RevenueCat Dashboard:**
+
 1. Products → Edit Introductory Offer
 2. Set to "None"
 3. Save
 
 **Result in App:**
+
 - CTA button: "Subscribe Now" ✅
 - Package helper: Shows billing period ✅
 - No "free trial" text anywhere ✅
@@ -215,6 +226,7 @@ const PAYWALL_CONFIG = {
 ```
 
 **What's NOT in code:**
+
 - ❌ Product prices
 - ❌ Trial durations
 - ❌ Product IDs
@@ -228,12 +240,14 @@ const PAYWALL_CONFIG = {
 ### Test Scenario 1: Multiple Products
 
 **Setup in RevenueCat:**
+
 - Monthly: $9.99
 - 3-Month: $24.99
 - Annual: $69.99
 - Lifetime: $199.99
 
 **Expected Behavior:**
+
 - Displays 4 packages ✅
 - Annual marked "BEST VALUE" (lowest monthly equiv) ✅
 - Lifetime shows "One-time payment" ✅
@@ -244,16 +258,19 @@ const PAYWALL_CONFIG = {
 ### Test Scenario 2: International Pricing
 
 **User in Spain:**
+
 - Monthly: 9,99 €
 - Annual: 69,99 €
 - Currency: EUR
 
 **User in UK:**
+
 - Monthly: £8.99
 - Annual: £59.99
 - Currency: GBP
 
 **Expected Behavior:**
+
 - Shows correct currency symbol ✅
 - Uses local price formatting ✅
 - No hardcoded "$" anywhere ✅
@@ -262,13 +279,13 @@ const PAYWALL_CONFIG = {
 
 ### Test Scenario 3: Different Trial Types
 
-| Product | Trial Setup | Expected CTA |
-|---------|-------------|--------------|
-| Monthly | 3 days free | "Start 3-day Free Trial" |
-| Monthly | 7 days free | "Start 7-day Free Trial" |
+| Product | Trial Setup  | Expected CTA              |
+| ------- | ------------ | ------------------------- |
+| Monthly | 3 days free  | "Start 3-day Free Trial"  |
+| Monthly | 7 days free  | "Start 7-day Free Trial"  |
 | Monthly | 14 days free | "Start 14-day Free Trial" |
-| Monthly | None | "Subscribe Now" |
-| Annual | 7 days free | "Start 7-day Free Trial" |
+| Monthly | None         | "Subscribe Now"           |
+| Annual  | 7 days free  | "Start 7-day Free Trial"  |
 
 All handled automatically! ✅
 
@@ -277,24 +294,29 @@ All handled automatically! ✅
 ## Benefits of Dynamic Paywall
 
 ### 1. No App Updates for Pricing
+
 Change prices anytime without resubmitting to app stores.
 
 ### 2. A/B Testing
+
 - Create multiple offerings in RevenueCat
 - Test different price points
 - No code changes needed
 
 ### 3. Seasonal Promotions
+
 - Add limited-time intro offers
 - Run holiday sales
 - All from dashboard
 
 ### 4. International Flexibility
+
 - Different prices per territory
 - Auto-handles currency conversion
 - Respects local pricing
 
 ### 5. Easy Package Experiments
+
 - Try weekly subscriptions
 - Test 6-month plans
 - Add lifetime options
@@ -325,6 +347,7 @@ const savings = "Save 42%";
 ```
 
 **Problems:**
+
 - App store reviewers see wrong currency
 - Can't change pricing without app update
 - Limited to 2 products only
@@ -346,10 +369,13 @@ const ctaText = intro ? `Start ${intro.cycles}-day Free Trial` : "Subscribe";
 const packages = offering.availablePackages; // [monthly, annual, 6month, ...]
 
 // GOOD: Calculate savings dynamically
-const savings = Math.round((monthlyPrice - yearlyPrice/12) / monthlyPrice * 100);
+const savings = Math.round(
+  ((monthlyPrice - yearlyPrice / 12) / monthlyPrice) * 100,
+);
 ```
 
 **Benefits:**
+
 - Works in all currencies
 - Adapts to any price change
 - Supports unlimited products
@@ -364,6 +390,7 @@ const savings = Math.round((monthlyPrice - yearlyPrice/12) / monthlyPrice * 100)
 **Cause:** No offering set to CURRENT in RevenueCat
 
 **Fix:**
+
 1. Go to RevenueCat dashboard
 2. Offerings → [Your Offering]
 3. Check "Set as CURRENT" ✅
@@ -376,6 +403,7 @@ const savings = Math.round((monthlyPrice - yearlyPrice/12) / monthlyPrice * 100)
 **Cause:** Trial configured in store but not in RevenueCat
 
 **Fix:**
+
 1. App Store Connect / Play Console
 2. Edit product → Introductory Offer
 3. Make sure it matches RevenueCat
@@ -388,6 +416,7 @@ const savings = Math.round((monthlyPrice - yearlyPrice/12) / monthlyPrice * 100)
 **Cause:** Product not in current offering
 
 **Fix:**
+
 1. RevenueCat → Offerings
 2. Edit offering → Add product
 3. Set offering to CURRENT
@@ -402,6 +431,7 @@ const savings = Math.round((monthlyPrice - yearlyPrice/12) / monthlyPrice * 100)
 **Expected:** Annual plans typically best value per month
 
 **Check:** Verify your math:
+
 - Monthly $9.99/mo = $9.99/mo
 - Annual $69.99/yr = $5.83/mo ← Best value ✅
 
@@ -413,12 +443,12 @@ const savings = Math.round((monthlyPrice - yearlyPrice/12) / monthlyPrice * 100)
 
 ```typescript
 // GOOD
-offering.annual
-offering.monthly
-offering.sixMonth
+offering.annual;
+offering.monthly;
+offering.sixMonth;
 
 // AVOID
-offering.availablePackages.find(p => p.identifier === 'pro_yearly')
+offering.availablePackages.find((p) => p.identifier === "pro_yearly");
 ```
 
 ### 2. Never Hardcode Currency
@@ -455,9 +485,11 @@ packages.map((pkg, index) => <PackageCard key={pkg.identifier} />)
 
 ```typescript
 // GOOD
-const bestIdx = packages.reduce((best, pkg, idx) => 
-  getMonthlyEquiv(pkg) < getMonthlyEquiv(packages[best]) ? idx : best
-, 0);
+const bestIdx = packages.reduce(
+  (best, pkg, idx) =>
+    getMonthlyEquiv(pkg) < getMonthlyEquiv(packages[best]) ? idx : best,
+  0,
+);
 
 // BAD
 const bestIdx = 1; // assume yearly is always best
@@ -470,24 +502,28 @@ const bestIdx = 1; // assume yearly is always best
 ### If You Have a Static Paywall
 
 **Step 1:** Replace hardcoded prices
+
 ```diff
 - const price = "$9.99";
 + const price = pkg.product.priceString;
 ```
 
 **Step 2:** Support multiple packages
+
 ```diff
 - const [selected, setSelected] = useState<"monthly"|"yearly">("yearly");
 + const [selectedIndex, setSelectedIndex] = useState(0);
 ```
 
 **Step 3:** Detect trials dynamically
+
 ```diff
 - const ctaText = "Start 7-Day Free Trial";
 + const ctaText = pkg.product.introPrice ? `Start ${intro.cycles}-day Free Trial` : "Subscribe";
 ```
 
 **Step 4:** Remove fixed package logic
+
 ```diff
 - const monthly = offering.monthly;
 - const yearly = offering.annual;
@@ -520,7 +556,7 @@ Your paywall is now **100% dynamic**:
 ✅ **Products:** Supports 1, 2, 5, or unlimited packages  
 ✅ **Currency:** Auto-localized for all regions  
 ✅ **Best Value:** Calculated dynamically  
-✅ **CTA Text:** Adapts to trial duration  
+✅ **CTA Text:** Adapts to trial duration
 
 **Result:** Change anything from RevenueCat dashboard without touching code! 🚀
 

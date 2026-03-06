@@ -8,6 +8,7 @@
 ## What Changed
 
 ### Before (Static Paywall)
+
 - ❌ Hardcoded "$9.99" and "$69.99" prices
 - ❌ Fixed "Start 7-Day Free Trial" text
 - ❌ Only supported monthly + annual (2 products max)
@@ -15,6 +16,7 @@
 - ❌ Required code changes for price updates
 
 ### After (Dynamic Paywall)
+
 - ✅ All prices from `product.priceString` (correct currency)
 - ✅ Trial text auto-generated from `product.introPrice`
 - ✅ Supports unlimited products (1, 2, 5, 10+)
@@ -28,16 +30,20 @@
 ### 1. Package State Management
 
 **Before:**
+
 ```typescript
 const [packages, setPackages] = useState<{
   monthly: PurchasesPackage | null;
   yearly: PurchasesPackage | null;
 }>({ monthly: null, yearly: null });
 
-const [selectedPackage, setSelectedPackage] = useState<"monthly" | "yearly">("yearly");
+const [selectedPackage, setSelectedPackage] = useState<"monthly" | "yearly">(
+  "yearly",
+);
 ```
 
 **After:**
+
 ```typescript
 const [packages, setPackages] = useState<PurchasesPackage[]>([]);
 const [selectedPackageIndex, setSelectedPackageIndex] = useState(0);
@@ -48,6 +54,7 @@ const [selectedPackageIndex, setSelectedPackageIndex] = useState(0);
 ### 2. Fetching Offerings
 
 **Before:**
+
 ```typescript
 const offerings = await Purchases.getOfferings();
 const targetOffering = offerings.current;
@@ -59,6 +66,7 @@ setPackages({
 ```
 
 **After:**
+
 ```typescript
 const offerings = await Purchases.getOfferings();
 const currentOffering = offerings.current;
@@ -81,6 +89,7 @@ setPackages(sortedPackages);
 ### 3. Dynamic Labels
 
 **Added:**
+
 ```typescript
 const getPackageLabel = (pkg: PurchasesPackage): string => {
   // Use product title from store if available
@@ -90,9 +99,12 @@ const getPackageLabel = (pkg: PurchasesPackage): string => {
 
   // Fallback to type-based labels
   switch (pkg.packageType) {
-    case PACKAGE_TYPE.ANNUAL: return "Annual Plan";
-    case PACKAGE_TYPE.MONTHLY: return "Monthly Plan";
-    case PACKAGE_TYPE.SIX_MONTH: return "6-Month Plan";
+    case PACKAGE_TYPE.ANNUAL:
+      return "Annual Plan";
+    case PACKAGE_TYPE.MONTHLY:
+      return "Monthly Plan";
+    case PACKAGE_TYPE.SIX_MONTH:
+      return "6-Month Plan";
     // ... etc
   }
 };
@@ -103,20 +115,21 @@ const getPackageLabel = (pkg: PurchasesPackage): string => {
 ### 4. Trial Detection
 
 **Added:**
+
 ```typescript
 const getPackageHelper = (pkg: PurchasesPackage): string => {
   const intro = pkg.product.introPrice;
-  
+
   if (intro) {
     const periodCount = Number(intro.cycles || intro.period || 1);
     const period = intro.periodUnit;
-    
+
     if (intro.price === 0) {
       return `Free for ${periodCount} ${period}${periodCount > 1 ? "s" : ""}`;
     }
     return `${intro.priceString} for ${periodCount} ${period}${periodCount > 1 ? "s" : ""}`;
   }
-  
+
   // Fallback descriptions
   return "Billed yearly"; // etc
 };
@@ -127,6 +140,7 @@ const getPackageHelper = (pkg: PurchasesPackage): string => {
 ### 5. Best Value Calculation
 
 **Added:**
+
 ```typescript
 const getBestValueIndex = (): number => {
   let bestIndex = 0;
@@ -162,8 +176,12 @@ const getBestValueIndex = (): number => {
 ### 6. Dynamic Savings
 
 **Added:**
+
 ```typescript
-const calculateSavings = (packageIndex: number, comparisonIndex: number): number => {
+const calculateSavings = (
+  packageIndex: number,
+  comparisonIndex: number,
+): number => {
   const pkg = packages[packageIndex];
   const comparison = packages[comparisonIndex];
 
@@ -171,7 +189,7 @@ const calculateSavings = (packageIndex: number, comparisonIndex: number): number
   const comparisonMonthly = getMonthlyEquivalent(comparison);
 
   return Math.round(
-    ((comparisonMonthly - pkgMonthly) / comparisonMonthly) * 100
+    ((comparisonMonthly - pkgMonthly) / comparisonMonthly) * 100,
   );
 };
 ```
@@ -181,22 +199,24 @@ const calculateSavings = (packageIndex: number, comparisonIndex: number): number
 ### 7. Dynamic CTA Button
 
 **Before:**
+
 ```typescript
 <Text>{PAYWALL_CONFIG.cta}</Text> // "Start Free Trial"
 ```
 
 **After:**
+
 ```typescript
 const getCtaText = (): string => {
   const selectedPkg = packages[selectedPackageIndex];
   const intro = selectedPkg?.product.introPrice;
-  
+
   if (intro && intro.price === 0) {
     const periodCount = Number(intro.cycles || intro.period || 1);
     const period = intro.periodUnit || "day";
     return `Start ${periodCount}-${period} Free Trial`;
   }
-  
+
   return PAYWALL_CONFIG.ctaNoTrial; // "Subscribe Now"
 };
 
@@ -208,6 +228,7 @@ const getCtaText = (): string => {
 ### 8. UI Rendering
 
 **Before:**
+
 ```typescript
 {/* Monthly Option */}
 <TouchableOpacity onPress={() => setSelectedPackage("monthly")}>
@@ -225,6 +246,7 @@ const getCtaText = (): string => {
 ```
 
 **After:**
+
 ```typescript
 {packages.map((pkg, index) => {
   const isSelected = selectedPackageIndex === index;
@@ -256,26 +278,27 @@ const getCtaText = (): string => {
 ### 9. Purchase Handler
 
 **Before:**
+
 ```typescript
-const pkgToBuy = selectedPackage === "monthly" 
-  ? packages.monthly 
-  : packages.yearly;
+const pkgToBuy =
+  selectedPackage === "monthly" ? packages.monthly : packages.yearly;
 
 await analyticsService.trackPurchaseError(
   user.id,
   selectedPackage, // "monthly" or "yearly"
-  error.message
+  error.message,
 );
 ```
 
 **After:**
+
 ```typescript
 const pkgToBuy = packages[selectedPackageIndex];
 
 await analyticsService.trackPurchaseError(
   user.id,
   pkgToBuy?.identifier || "unknown", // actual product ID
-  error.message
+  error.message,
 );
 ```
 
@@ -286,6 +309,7 @@ await analyticsService.trackPurchaseError(
 ### Static UI Config (PAYWALL_CONFIG)
 
 **Removed:**
+
 ```typescript
 defaultPlan: "yearly" as "monthly" | "yearly",
 heroTitle: "Start Your 2-Day Free Trial", // trial duration hardcoded
@@ -302,6 +326,7 @@ cta: "Start Free Trial",
 ```
 
 **Added:**
+
 ```typescript
 heroTitle: "Unlock Premium Features", // generic, no trial mentioned
 heroEmoji: "✨",
@@ -314,6 +339,7 @@ ctaNoTrial: "Subscribe Now", // used if no trial
 ## New Imports
 
 **Added:**
+
 ```typescript
 import { PACKAGE_TYPE } from "react-native-purchases";
 ```
@@ -345,24 +371,27 @@ import { PACKAGE_TYPE } from "react-native-purchases";
 ## Benefits Achieved
 
 ### For Developers
+
 ✅ No code changes needed for pricing updates  
 ✅ No app store resubmission for price changes  
 ✅ Easy A/B testing via RevenueCat dashboard  
 ✅ Support for seasonal promotions  
-✅ Flexible product experimentation  
+✅ Flexible product experimentation
 
 ### For Users
+
 ✅ Always see correct currency (€, £, $, ¥, etc.)  
 ✅ Accurate trial duration displayed  
 ✅ Fair price comparison across all options  
-✅ No misleading "$9.99" in non-USD regions  
+✅ No misleading "$9.99" in non-USD regions
 
 ### For Business
+
 ✅ Change prices instantly  
 ✅ Test different trial periods  
 ✅ Add/remove products dynamically  
 ✅ Territory-specific pricing  
-✅ No development bottleneck  
+✅ No development bottleneck
 
 ---
 
@@ -404,6 +433,7 @@ import { PACKAGE_TYPE } from "react-native-purchases";
 If issues arise:
 
 1. **Revert paywall.tsx:**
+
    ```bash
    git checkout HEAD~1 app/(modals)/paywall.tsx
    ```
@@ -435,11 +465,13 @@ If issues arise:
 ## Support
 
 **Questions?** See:
+
 - `DYNAMIC_PAYWALL_GUIDE.md` - How it works
 - `REVENUECAT_SETUP.md` - Configuration steps
 - `TESTING_GUIDE.md` - Testing scenarios
 
 **Issues?** Check:
+
 - All TypeScript errors resolved ✅
 - Zero compilation errors ✅
 - Deno errors are backend (expected) ✅
@@ -453,6 +485,6 @@ If issues arise:
 ✅ **Supports unlimited products**  
 ✅ **Change everything from dashboard**  
 ✅ **Zero TypeScript errors**  
-✅ **Production ready**  
+✅ **Production ready**
 
 **Result:** Best practice RevenueCat implementation following official guidelines! 🚀

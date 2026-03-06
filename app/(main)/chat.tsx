@@ -12,28 +12,28 @@ import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import {
-    Bubble,
-    GiftedChat,
-    IMessage,
-    InputToolbar,
-    MessageText,
-    Send,
+  Bubble,
+  GiftedChat,
+  IMessage,
+  InputToolbar,
+  MessageText,
+  Send,
 } from "react-native-gifted-chat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import {
-    getAIResponseStream,
-    transcribeAudio,
+  getAIResponseStream,
+  transcribeAudio,
 } from "../../services/openaiService";
 import { adService } from "../../utils/adService";
 import { aiMemoryService } from "../../utils/aiMemoryService";
@@ -119,7 +119,7 @@ export default function ChatScreen() {
     });
 
     // Initialize Offline Sync Service (Pro feature)
-    if (isPremium && isFeatureEnabled("offline_chat_mode", isPremium)) {
+    if (isPremium && isFeatureEnabled("offlineChat", isPremium)) {
       offlineSyncService.init().catch((err) => {
         logger.error("Failed to initialize offline sync:", err);
       });
@@ -532,10 +532,10 @@ export default function ChatScreen() {
           };
           moodContext = MOOD_MAP[data.mood_score];
         }
-      } catch (e) {}
+      } catch (e) { }
 
       // Load AI memory for personalized context (Pro feature)
-      if (isPremium && isFeatureEnabled("ai_memory", isPremium)) {
+      if (isPremium && isFeatureEnabled("aiMemory", isPremium)) {
         try {
           const memory = await aiMemoryService.getUserMemory(user.id);
           if (memory) {
@@ -549,7 +549,7 @@ export default function ChatScreen() {
 
             // Update current mood in memory
             if (moodContext) {
-              await aiMemoryService.updateMood(user.id, moodContext);
+              await aiMemoryService.recordCurrentMood(user.id, moodContext);
             }
           }
         } catch (err) {
@@ -557,12 +557,21 @@ export default function ChatScreen() {
         }
       }
 
+      // Inject memory context into history invisibly
+      const finalHistory = [...historyForOpenAI];
+      if (userMemoryContext) {
+        finalHistory.unshift({
+          role: "user" as const, // Use user role since OpenAI edge function may not support system role directly in history array
+          content: `[System Context: ${userMemoryContext}]`,
+        });
+      }
+
       try {
         await getAIResponseStream(
           userText,
           userRole || "friend",
           companionName,
-          historyForOpenAI,
+          finalHistory,
           userLanguage || "Hinglish",
           moodContext,
           user.id,
@@ -752,10 +761,10 @@ export default function ChatScreen() {
         messages.map((m) => ({
           role: m.user._id === 1 ? "user" : "assistant",
           content: m.text,
-          timestamp: m.createdAt?.toISOString(),
+          timestamp: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
         })),
         companionName,
-        profile?.name || "You",
+        profile?.companion_name || "You",
       );
 
       if (success) {
@@ -798,45 +807,50 @@ export default function ChatScreen() {
               },
             }}
           />
-          {/* Voice playback button for AI messages (Pro feature) */}
-          {isAI &&
-            isPremium &&
-            isFeatureEnabled("voiceMessages", isPremium) && (
-              <TouchableOpacity
-                onPress={() =>
-                  handlePlayVoice(
-                    props.currentMessage._id,
-                    props.currentMessage.text,
-                  )
+          {/* Voice playback button for AI messages */}
+          {isAI && (
+            <TouchableOpacity
+              onPress={() => {
+                if (!isPremium) {
+                  router.push("/(modals)/paywall");
+                  return;
                 }
+                handlePlayVoice(
+                  props.currentMessage._id,
+                  props.currentMessage.text,
+                );
+              }}
+              style={{
+                paddingLeft: 8,
+                marginBottom: 8,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <View
                 style={{
-                  paddingLeft: 8,
-                  marginBottom: 8,
-                  flexDirection: "row",
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: !isPremium
+                    ? "#F5F5F5"
+                    : playingMessageId === props.currentMessage._id
+                      ? "#FF6B9D"
+                      : "#F0F0F0",
                   alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <View
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    backgroundColor:
-                      playingMessageId === props.currentMessage._id
-                        ? "#FF6B9D"
-                        : "#F0F0F0",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ fontSize: 16 }}>
-                    {playingMessageId === props.currentMessage._id
+                <Text style={{ fontSize: 16 }}>
+                  {!isPremium
+                    ? "🔒"
+                    : playingMessageId === props.currentMessage._id
                       ? "⏸️"
                       : "🔊"}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       );
     },
@@ -983,20 +997,24 @@ export default function ChatScreen() {
             </View>
           </View>
           <View className="flex-row items-center gap-2">
-            {/* Export Chat Button (Pro feature) */}
-            {isPremium && isFeatureEnabled("chatExport", isPremium) && (
-              <TouchableOpacity
-                onPress={handleExportChat}
-                disabled={isExporting}
-                className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"
-              >
-                {isExporting ? (
-                  <ActivityIndicator size="small" color="#FF6B9D" />
-                ) : (
-                  <Text style={{ fontSize: 16 }}>📤</Text>
-                )}
-              </TouchableOpacity>
-            )}
+            {/* Export Chat Button - visible for all, locked for free */}
+            <TouchableOpacity
+              onPress={() => {
+                if (!isPremium) {
+                  router.push("/(modals)/paywall");
+                  return;
+                }
+                handleExportChat();
+              }}
+              disabled={isExporting}
+              className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"
+            >
+              {isExporting ? (
+                <ActivityIndicator size="small" color="#FF6B9D" />
+              ) : (
+                <Text style={{ fontSize: 16 }}>{isPremium ? "📤" : "🔒"}</Text>
+              )}
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(main)/settings")}
               className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"
