@@ -160,7 +160,6 @@ export default function SettingsScreen() {
   useEffect(() => {
     loadProFeatures();
   }, [user?.id, isPremium]);
-  };
 
   return (
     <View className="flex-1 bg-[#F8FBFF]">
