@@ -80,7 +80,7 @@ async function testRevenueCatIntegration() {
       const subscriptionDetails = await Promise.resolve(
         revenueCatService.getSubscriptionDetails(customerInfo),
       );
-      
+
       if (subscriptionDetails) {
         console.log(
           `    - Status: ${subscriptionDetails.isActive ? "Active" : "Inactive"}`,
