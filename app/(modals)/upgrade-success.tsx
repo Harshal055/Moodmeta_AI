@@ -1,12 +1,12 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import {
-    Animated,
-    Easing,
-    StatusBar,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Easing,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { logger } from "../../utils/logger";
@@ -83,49 +83,49 @@ export default function UpgradeSuccessScreen() {
 
         {/* Success Text */}
         <Animated.Text
-          style={{
-            transform: [{ translateY: slideUpAnim }],
-            opacity: opacityAnim,
-          }}
+          style={[
+            {
+              transform: [{ translateY: slideUpAnim }],
+              opacity: opacityAnim,
+              fontFamily: "Rosehot",
+              fontSize: 36,
+              color: "#1a1a2e",
+              lineHeight: 42,
+            }
+          ]}
           className="text-center mb-3"
-          style={{
-            fontFamily: "Rosehot",
-            fontSize: 36,
-            color: "#1a1a2e",
-            lineHeight: 42,
-          }}
         >
           You're Now{"\n"}Premium! ✨
         </Animated.Text>
 
         <Animated.Text
-          style={{
-            transform: [{ translateY: slideUpAnim }],
-            opacity: opacityAnim,
-          }}
+          style={[
+            {
+              transform: [{ translateY: slideUpAnim }],
+              opacity: opacityAnim,
+              fontFamily: "Inter_500Medium",
+              fontSize: 18,
+              color: "#D97706",
+              marginBottom: 16,
+            }
+          ]}
           className="text-center"
-          style={{
-            fontFamily: "Inter_500Medium",
-            fontSize: 18,
-            color: "#D97706",
-            marginBottom: 16,
-          }}
         >
           ❤️ Unlimited Chats Unlocked
         </Animated.Text>
 
         <Animated.Text
-          style={{
-            transform: [{ translateY: slideUpAnim }],
-            opacity: opacityAnim,
-          }}
+          style={[
+            {
+              transform: [{ translateY: slideUpAnim }],
+              opacity: opacityAnim,
+              fontFamily: "Inter_400Regular",
+              fontSize: 15,
+              color: "#666",
+              lineHeight: 22,
+            }
+          ]}
           className="text-center"
-          style={{
-            fontFamily: "Inter_400Regular",
-            fontSize: 15,
-            color: "#666",
-            lineHeight: 22,
-          }}
         >
           No more limits. Chat as much as you want with your{"\n"}perfect
           companion. Enjoy every moment! 💬

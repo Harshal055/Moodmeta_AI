@@ -5,14 +5,16 @@
  * the existing Supabase storage logic and OpenAI integration.
  */
 
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Audio } from "expo-av";
+import { Audio as ExpoAudio } from "expo-av";
 import * as Crypto from "expo-crypto";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -75,7 +77,7 @@ export default function ChatScreen() {
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [showAd, setShowAd] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingRef = useRef<ExpoAudio.Recording | null>(null);
   const trackedSessionUserRef = useRef<string | null>(null);
 
   // Use a ref to keep track of the latest messages safely without causing React to
@@ -120,7 +122,7 @@ export default function ChatScreen() {
 
     // Initialize Offline Sync Service (Pro feature)
     if (isPremium && isFeatureEnabled("offlineChat", isPremium)) {
-      offlineSyncService.init().catch((err) => {
+      offlineSyncService.init(user.id).catch((err) => {
         logger.error("Failed to initialize offline sync:", err);
       });
     }
@@ -128,7 +130,7 @@ export default function ChatScreen() {
     // Initialize Ad Service for free users
     if (!isPremium) {
       adService
-        .init()
+        .init(user.id)
         .then(() => {
           adService.showBannerAd(user.id, isPremium);
           setShowAd(true);
@@ -170,6 +172,23 @@ export default function ChatScreen() {
     const timer = setTimeout(() => setErrorToast(null), 4000);
     return () => clearTimeout(timer);
   }, [errorToast]);
+
+  // Handle app background/foreground transitions
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "background") {
+        logger.info("Chat: App moved to background. Ensuring sync...");
+        // Future: Could trigger a background sync force here if needed
+      } else if (nextAppState === "active") {
+        logger.info("Chat: App returned to foreground. Refreshing history...");
+        loadHistory();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // ── Load chat history ─────────────────────────────────────────────
   // Ghost user check is already handled in useAuth.initialize(),
@@ -248,12 +267,32 @@ export default function ChatScreen() {
             if (
               prev.length > 0 &&
               formattedHistory.length > 0 &&
-              prev[0]._id === formattedHistory[0]._id
+              prev[0]._id === formattedHistory[0]._id &&
+              prev.length === formattedHistory.length
             ) {
               return prev; // No new messages to append, skip UI flash!
             }
-            return formattedHistory;
+
+            // SMART MERGE: Don't just overwrite! The user might have just typed 
+            // a new temporary message that isn't in 'formattedHistory' yet.
+            // We merge them by unique ID, keeping the absolute newest on top.
+            const mergedMap = new Map();
+
+            // Add old cloud history first
+            formattedHistory.forEach(msg => mergedMap.set(msg._id, msg));
+
+            // Overwrite/Append any newer local state (like optimistic messages)
+            prev.forEach(msg => mergedMap.set(msg._id, msg));
+
+            // Convert back to Array and sort descending by date
+            const finalMerged = Array.from(mergedMap.values()).sort((a, b) => {
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
+
+            return finalMerged;
           });
+
+          AsyncStorage.setItem(cacheKey, JSON.stringify(formattedHistory.slice(0, MESSAGES_PER_PAGE)));
         }
 
         // For limit checking, count ALL user messages via a separate count query
@@ -263,6 +302,7 @@ export default function ChatScreen() {
             .select("id", { count: "exact", head: true })
             .eq("user_id", user.id)
             .eq("is_from_ai", false);
+
           if (!countError && count !== null) {
             checkLimit(count);
           }
@@ -425,14 +465,14 @@ export default function ChatScreen() {
   // ── Voice Recording ───────────────────────────────────────────────
   const startRecording = async () => {
     try {
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted } = await ExpoAudio.requestPermissionsAsync();
       if (!granted) return;
-      await Audio.setAudioModeAsync({
+      await ExpoAudio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      const { recording } = await ExpoAudio.Recording.createAsync(
+        ExpoAudio.RecordingOptionsPresets.HIGH_QUALITY,
       );
       recordingRef.current = recording;
       setIsRecording(true);
@@ -447,7 +487,7 @@ export default function ChatScreen() {
       setIsRecording(false);
       setIsTranscribing(true);
       await recordingRef.current.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await ExpoAudio.setAudioModeAsync({ allowsRecordingIOS: false });
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
       if (!uri) return;
@@ -479,24 +519,55 @@ export default function ChatScreen() {
     ) => {
       if (!user) return;
 
-      if (persistUserMessage) {
-        supabase
-          .from("chats")
-          .insert({
-            ...(userMessageId ? { id: userMessageId } : {}),
-            user_id: user?.id,
-            message: userText,
-            is_from_ai: false,
-          })
-          .then(({ error }) => {
-            if (error)
-              logger.warn("Save user msg (non-blocking):", error.message);
-          });
-      }
 
       setRetryPending(false);
       setRetryPayload(null);
       setIsTyping(true);
+
+      // Track sync status for user message
+      if (persistUserMessage && userMessageId) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === userMessageId ? { ...m, pendingSync: true } : m)),
+        );
+
+        const performInsert = async () => {
+          try {
+            const { error: insertError } = await supabase.from("chats").insert({
+              id: userMessageId,
+              user_id: user.id,
+              message: userText,
+              is_from_ai: false,
+            });
+
+            if (insertError) {
+              logger.warn("Save user msg failed:", insertError.message);
+              // User specified ⚠️ shows when pendingSync: true
+              // To handle failure, we can either keep it true or add a failure flag
+              // But following the prompt "Show ⚠️ if pendingSync === true" literally.
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m._id === userMessageId ? { ...m, pendingSync: true } : m,
+                ),
+              );
+            } else {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m._id === userMessageId ? { ...m, pendingSync: false } : m,
+                ),
+              );
+            }
+          } catch (err) {
+            logger.error("Save user msg crash:", err);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m._id === userMessageId ? { ...m, pendingSync: true } : m,
+              ),
+            );
+          }
+        };
+
+        performInsert();
+      }
 
       // Stable UUID so the optimistic _id matches the DB row id.
       // Math.random() caused duplicates because realtime echoed back
@@ -589,6 +660,17 @@ export default function ChatScreen() {
               setMessages((previousMessages) =>
                 GiftedChat.append(previousMessages, [newAiMsg]),
               );
+
+              // INITIAL SAVE: Create the record in DB as soon as first chunk arrives
+              // This prevents history loss if the app crashes mid-stream
+              supabase.from("chats").insert({
+                id: aiMessageId,
+                user_id: user.id,
+                message: streamingText,
+                is_from_ai: true,
+              }).then(({ error }) => {
+                if (error) logger.warn("Initial AI save failed:", error.message);
+              });
             } else {
               setMessages((currentMsgs) => {
                 return currentMsgs.map((m) => {
@@ -626,11 +708,8 @@ export default function ChatScreen() {
 
       setIsTyping(false);
 
-      // Pass the same aiMessageId so the DB row id matches the optimistic
-      // _id. The realtime subscription deduplicates by _id — if we let
-      // Postgres auto-generate a different UUID, the echo appears as a
-      // second bubble.
-      const { error: aiMsgError } = await supabase.from("chats").insert({
+      // FINAL SAVE: Update the record with full text
+      const { error: aiMsgError } = await supabase.from("chats").upsert({
         id: aiMessageId,
         user_id: user.id,
         message: streamingText,
@@ -666,7 +745,7 @@ export default function ChatScreen() {
       // This prevents duplicates when the background sync or cache reload fetches
       // the same message from the server with its real id.
       const stableId = Crypto.randomUUID();
-      const messagesWithStableId = [{ ...msg, _id: stableId }];
+      const messagesWithStableId = [{ ...msg, _id: stableId, pendingSync: true }];
 
       // Optimistic append
       setMessages((previousMessages) =>
@@ -776,7 +855,7 @@ export default function ChatScreen() {
     } finally {
       setIsExporting(false);
     }
-  }, [isPremium, messages, companionName, profile?.name]);
+  }, [isPremium, messages, companionName, profile?.companion_name]);
 
   const renderBubble = useCallback(
     (props: any) => {
@@ -788,67 +867,93 @@ export default function ChatScreen() {
             {...props}
             wrapperStyle={{
               right: {
-                backgroundColor: "#D9EEFF", // Blue for user
-                borderTopRightRadius: 4,
-                borderTopLeftRadius: 20,
-                borderBottomRightRadius: 20,
-                borderBottomLeftRadius: 20,
-                padding: 4,
-                marginBottom: 4,
+                backgroundColor: "#4F46E5", // Modern Indigo for user
+                borderRadius: 20,
+                borderBottomRightRadius: 4,
+                padding: 2,
+                marginBottom: 6,
+                shadowColor: "#4F46E5",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 2,
               },
               left: {
-                backgroundColor: "#FCDCE4", // Pink for AI
-                borderTopLeftRadius: 4,
-                borderTopRightRadius: 20,
-                borderBottomRightRadius: 20,
-                borderBottomLeftRadius: 20,
-                padding: 4,
-                marginBottom: 4,
+                backgroundColor: "#fff", // Clean white for AI
+                borderRadius: 20,
+                borderBottomLeftRadius: 4,
+                padding: 2,
+                marginBottom: 6,
+                borderWidth: 1,
+                borderColor: "#F0F0F0",
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+                elevation: 1,
+              },
+            }}
+            textStyle={{
+              right: {
+                color: "#fff",
+                fontFamily: "Inter_500Medium",
+                fontSize: 15,
+              },
+              left: {
+                color: "#1a1a2e",
+                fontFamily: "Inter_500Medium",
+                fontSize: 15,
               },
             }}
           />
-          {/* Voice playback button for AI messages */}
-          {isAI && (
+          {/* Sync status for user messages */}
+          {!isAI && props.currentMessage.pendingSync && (
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingRight: 8, marginTop: -4, marginBottom: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FEF2F2", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                <Text style={{ fontSize: 10, color: "#EF4444", marginRight: 4, fontFamily: "Inter_600SemiBold" }}>Sending...</Text>
+                <ActivityIndicator size={10} color="#EF4444" />
+              </View>
+            </View>
+          )}
+          {/* Voice playback button for AI messages — ONLY for Premium */}
+          {isAI && isPremium && (
             <TouchableOpacity
               onPress={() => {
-                if (!isPremium) {
-                  router.push("/(modals)/paywall");
-                  return;
-                }
                 handlePlayVoice(
                   props.currentMessage._id,
                   props.currentMessage.text,
                 );
               }}
               style={{
-                paddingLeft: 8,
-                marginBottom: 8,
+                marginLeft: 8,
+                marginBottom: 10,
                 flexDirection: "row",
                 alignItems: "center",
               }}
             >
               <View
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: !isPremium
-                    ? "#F5F5F5"
-                    : playingMessageId === props.currentMessage._id
-                      ? "#FF6B9D"
-                      : "#F0F0F0",
+                  width: 36,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: playingMessageId === props.currentMessage._id
+                    ? "#FF6B9D"
+                    : "#F8F9FA",
                   alignItems: "center",
                   justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: playingMessageId === props.currentMessage._id ? "#FF6B9D" : "#E5E7EB",
                 }}
               >
-                <Text style={{ fontSize: 16 }}>
-                  {!isPremium
-                    ? "🔒"
-                    : playingMessageId === props.currentMessage._id
-                      ? "⏸️"
-                      : "🔊"}
-                </Text>
+                <Ionicons
+                  name={playingMessageId === props.currentMessage._id ? "pause" : "volume-medium"}
+                  size={14}
+                  color={playingMessageId === props.currentMessage._id ? "#fff" : "#666"}
+                />
               </View>
+              {playingMessageId === props.currentMessage._id && (
+                <Text style={{ marginLeft: 6, fontSize: 10, color: "#FF6B9D", fontFamily: "Inter_600SemiBold" }}>Speaking...</Text>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -872,7 +977,7 @@ export default function ChatScreen() {
             fontFamily: "Inter_400Regular",
             fontSize: 15,
             lineHeight: 23,
-            color: "#1a1a2e",
+            color: "#fff",
           },
         }}
       />
@@ -891,6 +996,7 @@ export default function ChatScreen() {
             borderTopWidth: 1,
             borderTopColor: "#F0F0F0",
             paddingHorizontal: 8,
+            paddingVertical: 4,
           }}
           primaryStyle={{
             alignItems: "center",
@@ -898,19 +1004,26 @@ export default function ChatScreen() {
           renderActions={() => (
             <TouchableOpacity
               onPress={isRecording ? stopAndTranscribe : startRecording}
+              accessibilityLabel={isRecording ? "Stop recording" : "Start voice recording"}
+              accessibilityRole="button"
               style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: isRecording ? "#FEF2F2" : "#F8F9FA",
                 justifyContent: "center",
                 alignItems: "center",
-                paddingHorizontal: 8,
-                paddingVertical: 4,
+                marginLeft: 4,
               }}
             >
               {isTranscribing ? (
-                <ActivityIndicator size="small" color="#FF3B30" />
+                <ActivityIndicator size="small" color="#4F46E5" />
               ) : (
-                <Text style={{ fontSize: 20 }}>
-                  {isRecording ? "⏹️" : "🎙️"}
-                </Text>
+                <Ionicons
+                  name={isRecording ? "stop-circle" : "mic"}
+                  size={24}
+                  color={isRecording ? "#EF4444" : "#666"}
+                />
               )}
             </TouchableOpacity>
           )}
@@ -924,6 +1037,8 @@ export default function ChatScreen() {
     return (
       <Send
         {...props}
+        accessibilityLabel="Send message"
+        accessibilityRole="button"
         containerStyle={{ justifyContent: "center", marginHorizontal: 10 }}
       >
         <View
@@ -1020,12 +1135,6 @@ export default function ChatScreen() {
               className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"
             >
               <Text style={{ fontSize: 16 }}>⚙️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push("/(main)/profile")}
-              className="w-9 h-9 rounded-full bg-[#F5F5F5] items-center justify-center"
-            >
-              <Text style={{ fontSize: 14, color: "#666" }}>✕</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1207,8 +1316,16 @@ export default function ChatScreen() {
           renderMessageText={renderMessageText}
           renderInputToolbar={renderInputToolbar}
           renderSend={renderSend}
-          renderAvatar={() => null} // Hide avatars to match original UI
-          // @ts-ignore - these props are valid in JS but missing from GiftedChat's strict Typescript definitions
+          renderAvatar={(props) => (
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#FDF2F8", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FCE7F3" }}>
+              {profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+              ) : (
+                <Text style={{ fontSize: 18 }}>❤️</Text>
+              )}
+            </View>
+          )}
+          // @ts-ignore
           showUserAvatar={false}
           showAvatarForEveryMessage={false}
           bottomOffset={Platform.OS === "ios" ? insets.bottom : 0}

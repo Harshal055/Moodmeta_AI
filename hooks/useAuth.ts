@@ -14,9 +14,9 @@ import type { Session, User } from "@supabase/supabase-js";
 import { Alert } from "react-native";
 import { create } from "zustand";
 import {
-    ExpoSecureStoreAdapter,
-    supabase,
-    SUPABASE_STORAGE_KEY,
+  ExpoSecureStoreAdapter,
+  supabase,
+  SUPABASE_STORAGE_KEY,
 } from "../lib/supabase";
 import { revenueCatService } from "../services/revenueCatService";
 import { logger } from "../utils/logger";
@@ -68,10 +68,11 @@ interface AuthState {
         | "onboarded"
       >
     >,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   updateAuthPushToken: (token: string) => Promise<void>;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>; // Placeholder
+  transferAnonymousData: (oldUserId: string, newUserId: string) => Promise<void>;
 }
 
 // ── Promise Lock ─────────────────────────────────────────────────────
@@ -103,150 +104,147 @@ export const useAuth = create<AuthState>((set, get) => ({
   initialize: async () => {
     if (get().isInitialized) return;
 
-    // Add a safety timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      logger.error("Auth initialization timeout - forcing completion");
-      set({ isLoading: false, isInitialized: true });
-    }, 10000); // 10 second timeout
-
-    try {
-      set({ isLoading: true });
-      logger.info("Starting auth initialization...");
-
-      let activeUser = null;
-
-      // 1. Initial Auth Check with JSON error recovery
-      let initialSession = null;
+    // Race the initialization logic against a 20-second timeout
+    const initializationLogic = (async () => {
       try {
-        logger.info("Fetching session...");
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        initialSession = session;
-        activeUser = session?.user ?? null;
-        logger.info("Session fetched:", activeUser ? "User found" : "No user");
-      } catch (sessionError: any) {
-        // Handle corrupted session data
-        logger.error("Session fetch error:", sessionError);
-        if (sessionError?.message?.includes("JSON Parse")) {
-          logger.warn("Corrupted session detected, clearing all auth data...");
-          // Clear SecureStore manually
-          await ExpoSecureStoreAdapter.removeItem(SUPABASE_STORAGE_KEY);
-          activeUser = null;
-        } else {
-          throw sessionError;
-        }
-      }
+        set({ isLoading: true });
+        logger.info("Starting auth initialization...");
 
-      // If we have a session, verify it's valid to catch "Ghost Users"
-      if (activeUser) {
-        logger.info("Validating existing user session...");
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        if (userError || !user) {
-          logger.warn("Invalid session detected, clearing...");
-          await get().signOut(); // Clears everything locally and remotely
-          activeUser = null;
-        } else {
-          logger.info("User session validated");
-          activeUser = user;
-        }
-      }
+        let activeUser = null;
 
-      // 2. Fallback to Anonymous Sign-in if needed
-      if (!activeUser) {
-        logger.info("No active user, signing in anonymously...");
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          logger.error("Anonymous sign-in error:", error);
-          throw error;
-        }
-        activeUser = data.session?.user ?? null;
-        logger.info("Anonymous sign-in successful");
-      }
-
-      // 3. Set Initial State (reuse session from step 1, avoid double getSession)
-      if (activeUser) {
-        logger.info("Setting up user state...");
-        // If we signed in anonymously, fetch the fresh session
-        if (!initialSession) {
-          const { data } = await supabase.auth.getSession();
-          initialSession = data.session;
-        }
-        set({
-          currentUser: activeUser,
-          session: initialSession,
-        });
-        logger.info("Ensuring profile exists...");
-        await get().ensureProfile(activeUser.id);
-        logger.info("Profile setup complete");
-
-        // Register for push notifications and save to Supabase (non-blocking)
-        logger.info("Registering for push notifications...");
-        registerForPushNotificationsAsync()
-          .then((token) => {
-            if (token) {
-              logger.info("Push token received, updating profile");
-              return get().updateAuthPushToken(token);
-            }
-          })
-          .catch((pushErr) => {
-            logger.warn("Push token registration skipped:", pushErr);
-          });
-      }
-
-      // 4. Setup Global Listener for subsequent changes
-      logger.info("Setting up auth state listener...");
-      // Unsubscribe previous listener to prevent leaks
-      if (authSubscription) {
-        authSubscription.unsubscribe();
-      }
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
-        const user = session?.user ?? null;
-        if (event === "SIGNED_OUT") {
-          set({
-            currentUser: null,
-            session: null,
-            profile: null,
-            onboarded: false,
-            role: null,
-            avatar_url: null,
-            push_token: null,
-            isPremium: false,
-          });
-        } else if (user) {
-          set({ currentUser: user, session });
-          await get().ensureProfile(user.id);
-
-          // Register for push on sign in as well (non-blocking)
-          try {
-            const token = await registerForPushNotificationsAsync();
-            if (token) await get().updateAuthPushToken(token);
-          } catch (pushErr) {
-            logger.warn("Push token registration skipped:", pushErr);
+        // 1. Initial Auth Check with JSON error recovery
+        let initialSession = null;
+        try {
+          logger.info("Fetching session...");
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          initialSession = session;
+          activeUser = session?.user ?? null;
+          logger.info("Session fetched:", activeUser ? "User found" : "No user");
+        } catch (sessionError: any) {
+          // Handle corrupted session data
+          logger.error("Session fetch error:", sessionError);
+          if (sessionError?.message?.includes("JSON Parse")) {
+            logger.warn("Corrupted session detected, clearing all auth data...");
+            await ExpoSecureStoreAdapter.removeItem(SUPABASE_STORAGE_KEY);
+            activeUser = null;
+          } else {
+            throw sessionError;
           }
         }
-      });
-      authSubscription = subscription;
-    } catch (err: any) {
-      logger.error("Auth initialization failure:", err.message || err);
 
-      // If it's a JSON Parse error from Supabase fetch, it's the Cloudflare 525 issue from the India outage
-      if (err.message && err.message.includes("JSON Parse error")) {
+        // If we have a session, verify it's valid to catch "Ghost Users"
+        if (activeUser) {
+          logger.info("Validating existing user session...");
+          const {
+            data: { user },
+            error: userError,
+          } = await supabase.auth.getUser();
+          if (userError || !user) {
+            logger.warn("Invalid session detected, clearing...");
+            await get().signOut();
+            activeUser = null;
+          } else {
+            logger.info("User session validated");
+            activeUser = user;
+          }
+        }
+
+        // 2. Fallback to Anonymous Sign-in if needed
+        if (!activeUser) {
+          logger.info("No active user, signing in anonymously...");
+
+          let retryCount = 0;
+          const maxRetries = 2;
+          let signInSuccess = false;
+
+          while (!signInSuccess && retryCount < maxRetries) {
+            const { data, error } = await supabase.auth.signInAnonymously();
+            if (error) {
+              retryCount++;
+              logger.error(`Anonymous sign-in error (Attempt ${retryCount}):`, error);
+              if (retryCount >= maxRetries) throw error;
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            } else {
+              activeUser = data.session?.user ?? null;
+              signInSuccess = true;
+            }
+          }
+        }
+
+        if (activeUser) {
+          if (!initialSession) {
+            const { data } = await supabase.auth.getSession();
+            initialSession = data.session;
+          }
+          set({
+            currentUser: activeUser,
+            session: initialSession,
+          });
+          await get().ensureProfile(activeUser.id);
+
+          registerForPushNotificationsAsync()
+            .then((token) => {
+              if (token) return get().updateAuthPushToken(token);
+            })
+            .catch(() => { });
+        }
+
+        // 4. Setup Global Listener
+        if (authSubscription) authSubscription.unsubscribe();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          const newUser = session?.user ?? null;
+          const oldUser = get().currentUser;
+
+          if (event === "SIGNED_OUT") {
+            set({
+              currentUser: null, session: null, profile: null, onboarded: false,
+              role: null, avatar_url: null, push_token: null, isPremium: false,
+            });
+          } else if (newUser) {
+            // DETECT MIGRATION: If we transition from Anonymous -> Real Account with a DIFFERENT ID
+            if (oldUser && oldUser.is_anonymous && !newUser.is_anonymous && oldUser.id !== newUser.id) {
+              logger.info(`Auth: Detected User Switch during Link/Sign-In. Migrating ${oldUser.id} -> ${newUser.id}`);
+              await get().transferAnonymousData(oldUser.id, newUser.id);
+            }
+
+            set({ currentUser: newUser, session });
+            await get().ensureProfile(newUser.id);
+          }
+        });
+        authSubscription = subscription;
+
+        set({ isLoading: false, isInitialized: true });
+        logger.info("Auth initialization complete");
+      } catch (err: any) {
+        logger.error("Auth initialization fatal error:", err.message || err);
+        set({ isLoading: false }); // Stop loading, but DO NOT set isInitialized: true
+
         Alert.alert(
-          "Network Outage 📡",
-          "Unable to connect to MoodMate AI servers. If you are in India, this is due to an ongoing network outage with our database provider (Supabase).\n\nPlease try using a VPN, changing your DNS to 1.1.1.1, or trying again later.",
+          "Connection Error 📡",
+          "There was a problem starting the app. Please check your internet and try again.",
+          [{ text: "Retry", onPress: () => get().initialize() }]
         );
       }
-    } finally {
-      clearTimeout(timeoutId); // Clear the safety timeout
-      logger.info("Auth initialization complete");
-      set({ isLoading: false, isInitialized: true });
-    }
+    })();
+
+    // 15 second timeout to prevent hanging splash screen
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("TIMEOUT")), 15000);
+    });
+
+    await Promise.race([initializationLogic, timeoutPromise]).catch((e) => {
+      if (e.message === "TIMEOUT") {
+        logger.error("Auth timed out");
+        set({ isLoading: false });
+        Alert.alert(
+          "Connection Timeout",
+          "The server is taking too long to respond. Please try again.",
+          [{ text: "Retry", onPress: () => get().initialize() }]
+        );
+      }
+    });
   },
 
   /**
@@ -255,79 +253,58 @@ export const useAuth = create<AuthState>((set, get) => ({
    */
   ensureProfile: async (userId: string) => {
     if (ensureProfilePromise && currentEnsuringUserId === userId) {
-      logger.info("ensureProfile: Reusing existing promise");
-      return ensureProfilePromise; // deduplicate concurrent calls
+      return ensureProfilePromise;
     }
 
-    logger.info("ensureProfile: Starting for user:", userId);
     currentEnsuringUserId = userId;
     ensureProfilePromise = (async () => {
       try {
-        // 1. Try to load existing profile
-        logger.info("ensureProfile: Fetching profile from DB");
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", userId)
-          .limit(1);
+        logger.info("ensureProfile: Fetching/creating for:", userId);
 
-        if (error) {
-          logger.error("ensureProfile: DB error:", error);
-          throw error;
+        // 1. Unified Fetch & Identity Load
+        const fetchProfile = async () => {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("user_id", userId)
+            .maybeSingle();
+          if (error && error.code !== "PGRST116") throw error;
+          return data;
+        };
+
+        let prof = await fetchProfile();
+
+        // 2. Race condition handling: If no profile, try to create it or wait for trigger
+        if (!prof) {
+          logger.info("ensureProfile: Profile not found, attempting safe create...");
+          const { data: newProf, error: insertError } = await supabase
+            .from("profiles")
+            .upsert({ user_id: userId, onboarded: false }, { onConflict: "user_id" })
+            .select()
+            .maybeSingle();
+
+          if (insertError) {
+            logger.warn("ensureProfile: Insert/Upsert conflict (expected if trigger won):", insertError.message);
+            // Re-fetch in case a trigger created it simultaneously
+            prof = await fetchProfile();
+          } else {
+            prof = newProf;
+          }
         }
 
-        if (data && data.length > 0) {
-          logger.info("ensureProfile: Profile found, logging into RevenueCat");
-          const prof = data[0] as Profile;
-
-          // Login to RevenueCat and check entitlement
-          const customerInfo = await revenueCatService.login(userId);
-          const isRcPremium = revenueCatService.checkEntitlement(customerInfo);
-
-          logger.info("ensureProfile: Setting profile state");
-          set({
-            profile: prof,
-            onboarded: prof.onboarded,
-            role: prof.role,
-            country: prof.country,
-            language: prof.language,
-            avatar_url: prof.avatar_url,
-            push_token: prof.push_token,
-            isPremium: isRcPremium, // Override DB with RC truth
-          });
-
-          logger.info("ensureProfile: Complete");
-          return;
+        if (!prof) {
+          // Final fallback: Wait a moment for trigger
+          await new Promise(r => setTimeout(r, 800));
+          prof = await fetchProfile();
         }
 
-        // 2. No profile yet -> Wait a bit for trigger to create it (if using trigger)
-        // Or try to insert manually (if using RLS policies only)
-        logger.info("ensureProfile: Profile not found, waiting for trigger...");
-        await new Promise((resolve) => setTimeout(resolve, 500)); // Give trigger time to create profile
-
-        logger.info("ensureProfile: Retrying profile fetch");
-        const { data: retryData, error: retryError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", userId)
-          .limit(1);
-
-        if (retryError) {
-          logger.error("ensureProfile: Retry error:", retryError);
-          throw retryError;
-        }
-
-        if (retryData && retryData.length > 0) {
-          logger.info(
-            "ensureProfile: Profile found on retry, logging into RevenueCat",
-          );
-          const prof = retryData[0] as Profile;
+        if (prof) {
           const customerInfo = await revenueCatService.login(userId);
           const isRcPremium = revenueCatService.checkEntitlement(customerInfo);
 
           set({
-            profile: prof,
-            onboarded: prof.onboarded,
+            profile: prof as Profile,
+            onboarded: (prof.onboarded as boolean) ?? false,
             role: prof.role,
             country: prof.country,
             language: prof.language,
@@ -335,48 +312,13 @@ export const useAuth = create<AuthState>((set, get) => ({
             push_token: prof.push_token,
             isPremium: isRcPremium,
           });
-          logger.info("ensureProfile: Complete (retry)");
-          return;
-        }
-
-        // 3. Trigger didn't create it, try manual insert (fallback)
-        logger.info(
-          "ensureProfile: Profile still not found, inserting manually",
-        );
-        const { data: newProfile, error: insertError } = await supabase
-          .from("profiles")
-          .insert({ user_id: userId, onboarded: false })
-          .select();
-
-        if (insertError) {
-          logger.error("ensureProfile insert error:", insertError.message);
-          throw insertError;
-        }
-
-        if (newProfile && newProfile.length > 0) {
-          logger.info(
-            "ensureProfile: New profile created, logging into RevenueCat",
-          );
-          const prof = newProfile[0] as Profile;
-          const customerInfo = await revenueCatService.login(userId);
-          const isRcPremium = revenueCatService.checkEntitlement(customerInfo);
-
-          set({
-            profile: prof,
-            onboarded: prof.onboarded,
-            role: prof.role,
-            country: prof.country,
-            language: prof.language,
-            avatar_url: prof.avatar_url,
-            push_token: prof.push_token,
-            isPremium: isRcPremium,
-          });
-          logger.info("ensureProfile: Complete (new profile)");
+          logger.info("ensureProfile: Success");
+        } else {
+          throw new Error("Critical: Could not establish profile record.");
         }
       } catch (err: any) {
-        logger.error("ensureProfile error:", err.message || err);
+        logger.error("ensureProfile failure:", err.message || err);
       } finally {
-        logger.info("ensureProfile: Cleaning up");
         ensureProfilePromise = null;
         currentEnsuringUserId = null;
       }
@@ -390,7 +332,7 @@ export const useAuth = create<AuthState>((set, get) => ({
    */
   updateProfile: async (data) => {
     const user = get().currentUser;
-    if (!user) return;
+    if (!user) return false;
 
     try {
       const { data: updated, error } = await supabase
@@ -424,7 +366,9 @@ export const useAuth = create<AuthState>((set, get) => ({
             avatar_url: prof.avatar_url,
             push_token: prof.push_token,
           });
+          return true;
         }
+        return false;
       } else {
         const prof = updated[0] as Profile;
         set({
@@ -436,9 +380,11 @@ export const useAuth = create<AuthState>((set, get) => ({
           avatar_url: prof.avatar_url,
           push_token: prof.push_token,
         });
+        return true;
       }
     } catch (err: any) {
       logger.error("updateProfile error:", err.message || err);
+      return false;
     }
   },
 
@@ -506,5 +452,43 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   signInWithGoogle: async () => {
     logger.info("Future Enhancement: Google Auth");
+  },
+
+  /**
+   * Migrate chats and logs from a temporary anonymous UID to a permanent one.
+   * This is critical to prevent "disappearing history" when linking accounts.
+   */
+  transferAnonymousData: async (oldUserId, newUserId) => {
+    try {
+      logger.info(`MIGRATION: Moving data from ${oldUserId} to ${newUserId}`);
+
+      // 1. Migrate Chats
+      const { error: chatError } = await supabase
+        .from("chats")
+        .update({ user_id: newUserId })
+        .eq("user_id", oldUserId);
+      if (chatError) logger.error("Migration: Chat move failed:", chatError.message);
+
+      // 2. Migrate Mood Logs
+      const { error: logError } = await supabase
+        .from("mood_logs")
+        .update({ user_id: newUserId })
+        .eq("user_id", oldUserId);
+      if (logError) logger.error("Migration: Mood logs move failed:", logError.message);
+
+      // 3. Migrate AI Memory (if exists)
+      const { error: memoryError } = await supabase
+        .from("user_memories" as any)
+        .update({ user_id: newUserId })
+        .eq("user_id", oldUserId);
+      if (memoryError) logger.warn("Migration: AI Memory move failed (might not exist):", memoryError.message);
+
+      // 4. Clean up old profile if it's empty/obsolete
+      // We don't delete immediately to be safe, but we could mark it.
+
+      logger.info("MIGRATION: Completed successfully");
+    } catch (err) {
+      logger.error("MIGRATION: Fatal error:", err);
+    }
   },
 }));

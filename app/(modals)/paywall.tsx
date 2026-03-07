@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -664,7 +665,13 @@ export default function PaywallScreen() {
 
                     {/* Package Card */}
                     <TouchableOpacity
-                      onPress={() => setSelectedPackageIndex(index)}
+                      onPress={() => {
+                        setSelectedPackageIndex(index);
+                        Haptics.selectionAsync();
+                      }}
+                      accessibilityLabel={`${getPackageLabel(pkg)}, ${pkg.product.priceString}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                       style={{
                         padding: 16,
                         paddingTop: isBestValue ? 24 : 16,
@@ -786,10 +793,15 @@ export default function PaywallScreen() {
 
           {/* CTA Button */}
           <TouchableOpacity
-            onPress={handlePurchase}
+            onPress={() => {
+              handlePurchase();
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }}
             disabled={
               isPurchasing || isLoadingOfferings || packages.length === 0
             }
+            accessibilityLabel={getCtaText()}
+            accessibilityRole="button"
             className="w-full bg-black py-4 rounded-full items-center justify-center mt-6 mb-3"
           >
             {isPurchasing || isLoadingOfferings ? (
@@ -900,6 +912,6 @@ export default function PaywallScreen() {
           </View>
         </View>
       </ScrollView>
-    </Animated.View>
+    </Animated.View >
   );
 }

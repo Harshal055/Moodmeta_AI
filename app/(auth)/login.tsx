@@ -1,95 +1,59 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
+import { logger } from "../../utils/logger";
 
-export default function LinkEmailScreen() {
+const ADMIN_EMAIL = "harsh@moodmateai.com";
+
+export default function LoginScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [isLinking, setIsLinking] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
-    const handleEmailLink = async () => {
+    const handleLogin = async () => {
         const cleanEmail = email.trim().toLowerCase();
-        if (!cleanEmail || !password.trim()) {
-            Alert.alert("Missing Fields", "Please enter both an email and a password.");
+        if (!cleanEmail || !password) {
+            Alert.alert("Missing Info", "Please enter both email and password.");
             return;
         }
 
-        // ISSUE 2 FIX: Password strength validation
-        if (password.length < 8) {
-            Alert.alert("Weak Password", "Password must be at least 8 characters long.");
-            return;
-        }
-
-        setIsLinking(true);
+        setLoading(true);
         try {
-            // ISSUE 3 FIX: Admin isolation
-            // Prevent falls-through to updateUser for admin email
-            if (cleanEmail === "harsh@moodmateai.com") {
-                const { error: adminSignInError } = await supabase.auth.signInWithPassword({
-                    email: cleanEmail,
-                    password: password,
-                });
-
-                if (adminSignInError) {
-                    Alert.alert("Admin Access Denied", "Invalid admin credentials.");
-                    return; // Explicitly block fallback to updateUser
-                }
-
-                Alert.alert("Welcome back, Owner", "Accessing Admin Console...");
-                router.replace("/(admin)/dashboard");
-                return;
-            }
-
-            // Normal User Flow
-            // STEP 1: Try to sign in first (in case account already exists)
-            const { error: signInError } = await supabase.auth.signInWithPassword({
+            const { error } = await supabase.auth.signInWithPassword({
                 email: cleanEmail,
-                password: password,
+                password,
             });
 
-            if (!signInError) {
-                // SUCCESSFUL LOGIN
-                Alert.alert("Logged In", "You've been signed into your existing account.");
-                router.replace("/(main)/chat");
-                return;
-            }
+            if (error) throw error;
 
-            // STEP 2: If sign in failed because user doesn't exist, try to link current anonymous session
-            if (signInError.message.toLowerCase().includes("invalid login credentials")) {
-                const { error: linkError } = await supabase.auth.updateUser({
-                    email: cleanEmail,
-                    password: password
-                });
-
-                if (linkError) {
-                    if (linkError.message.toLowerCase().includes("already registered") || linkError.message.toLowerCase().includes("already taken")) {
-                        throw new Error("This email is already taken. Try logging in instead.");
-                    }
-                    throw linkError;
-                }
-
-                // ISSUE 1 FIX: Show 'Please verify' alert
-                Alert.alert(
-                    "Verify Your Email 📧",
-                    "Your companion is saved! However, we've sent a verification link to your email. Please verify to fully secure your account.",
-                    [{ text: "Will do!", onPress: () => router.navigate("/(main)/chat") }]
-                );
+            // Redirect logic
+            if (cleanEmail === ADMIN_EMAIL) {
+                router.replace("/(admin)/dashboard");
             } else {
-                throw signInError;
+                router.replace("/(main)/chat");
             }
-
         } catch (error: any) {
-            console.error("Email link error:", error);
-            Alert.alert("Action Failed", error.message || "An unexpected error occurred.");
+            logger.error("Login Error:", error);
+            Alert.alert("Login Failed", error.message || "Please check your credentials.");
         } finally {
-            setIsLinking(false);
+            setLoading(false);
         }
     };
 
@@ -100,24 +64,19 @@ export default function LinkEmailScreen() {
         >
             <View style={[styles.innerContainer, { paddingTop: Math.max(insets.top, 20) }]}>
 
-                {/* Back button above card */}
-                <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={28} color="#0f172a" />
-                </TouchableOpacity>
-
                 {/* Main Card */}
                 <View style={styles.card}>
                     {/* Logo Area */}
                     <View style={styles.logoContainer}>
                         <View style={styles.logoIcon}>
-                            <Ionicons name="mail" size={20} color="#fff" />
+                            <Ionicons name="hardware-chip" size={20} color="#fff" />
                         </View>
-                        <Text style={styles.logoText}>Connect Email</Text>
+                        <Text style={styles.logoText}>MoodMateAI</Text>
                     </View>
 
                     <View style={styles.header}>
-                        <Text style={styles.title}>Save Account</Text>
-                        <Text style={styles.subtitle}>Lock in your companion by creating a permanent password</Text>
+                        <Text style={styles.title}>Welcome Back</Text>
+                        <Text style={styles.subtitle}>Enter your details to log in to your account</Text>
                     </View>
 
                     <View style={styles.form}>
@@ -127,7 +86,7 @@ export default function LinkEmailScreen() {
                             <TextInput
                                 value={email}
                                 onChangeText={setEmail}
-                                placeholder="you@example.com"
+                                placeholder="name@example.com"
                                 placeholderTextColor="#94a3b8"
                                 autoCapitalize="none"
                                 keyboardType="email-address"
@@ -137,31 +96,66 @@ export default function LinkEmailScreen() {
 
                         {/* Password Input */}
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Password</Text>
+                            <View style={styles.passwordLabelRow}>
+                                <Text style={styles.label}>Password</Text>
+                                <TouchableOpacity>
+                                    <Text style={styles.forgotPassword}>Forgot password?</Text>
+                                </TouchableOpacity>
+                            </View>
                             <View style={styles.passwordInputContainer}>
                                 <TextInput
                                     value={password}
                                     onChangeText={setPassword}
-                                    placeholder="At least 8 characters"
+                                    placeholder="Enter your password"
                                     placeholderTextColor="#94a3b8"
                                     secureTextEntry={!showPassword}
                                     style={styles.passwordInput}
                                 />
+                                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                                    <Ionicons name={showPassword ? "eye" : "eye-off"} size={20} color="#94a3b8" />
+                                </TouchableOpacity>
                             </View>
                         </View>
 
-                        {/* Submit Button */}
+                        {/* Login Button */}
                         <TouchableOpacity
-                            onPress={handleEmailLink}
-                            disabled={isLinking}
+                            onPress={handleLogin}
+                            disabled={loading}
                             style={styles.loginButton}
                         >
-                            {isLinking ? (
+                            {loading ? (
                                 <ActivityIndicator color="#fff" />
                             ) : (
-                                <Text style={styles.loginButtonText}>Save Account</Text>
+                                <Text style={styles.loginButtonText}>Log In</Text>
                             )}
                         </TouchableOpacity>
+
+                        {/* Divider */}
+                        <View style={styles.dividerContainer}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Social Buttons */}
+                        <View style={styles.socialRow}>
+                            <TouchableOpacity style={styles.socialButton}>
+                                <Ionicons name="logo-google" size={18} color="#EA4335" />
+                                <Text style={styles.socialButtonText}>Google</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.socialButton}>
+                                <Ionicons name="logo-apple" size={18} color="#000" />
+                                <Text style={styles.socialButtonText}>Apple</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Sign Up Link */}
+                        <View style={styles.footer}>
+                            <Text style={styles.footerText}>Don't have an account? </Text>
+                            <TouchableOpacity onPress={() => router.push("/(auth)/role-picker")}>
+                                <Text style={styles.signupLink}>Sign up for free</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </View>
@@ -178,10 +172,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         paddingHorizontal: 20,
-    },
-    backButton: {
-        marginBottom: 20,
-        marginLeft: 4,
     },
     card: {
         backgroundColor: "#fff",
@@ -231,7 +221,6 @@ const styles = StyleSheet.create({
         fontFamily: "Inter_500Medium",
         color: "#64748b",
         textAlign: "center",
-        paddingHorizontal: 10,
     },
     form: {
         gap: 20,
@@ -255,6 +244,16 @@ const styles = StyleSheet.create({
         fontFamily: "Inter_500Medium",
         color: "#0f172a",
     },
+    passwordLabelRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
+    forgotPassword: {
+        fontSize: 13,
+        fontFamily: "Inter_500Medium",
+        color: "#1337ec",
+    },
     passwordInputContainer: {
         flexDirection: "row",
         alignItems: "center",
@@ -270,6 +269,9 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontFamily: "Inter_500Medium",
         color: "#0f172a",
+    },
+    eyeIcon: {
+        padding: 14,
     },
     loginButton: {
         backgroundColor: "#1337ec",
@@ -287,5 +289,58 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 16,
         fontFamily: "Inter_700Bold",
+    },
+    dividerContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginVertical: 4,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: "#e2e8f0",
+    },
+    dividerText: {
+        paddingHorizontal: 12,
+        fontSize: 11,
+        fontFamily: "Inter_600SemiBold",
+        color: "#94a3b8",
+        letterSpacing: 0.5,
+    },
+    socialRow: {
+        flexDirection: "row",
+        gap: 12,
+    },
+    socialButton: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        borderRadius: 8,
+        paddingVertical: 14,
+        gap: 8,
+    },
+    socialButtonText: {
+        fontSize: 14,
+        fontFamily: "Inter_600SemiBold",
+        color: "#334155",
+    },
+    footer: {
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
+        marginTop: 8,
+    },
+    footerText: {
+        fontSize: 13,
+        fontFamily: "Inter_500Medium",
+        color: "#64748b",
+    },
+    signupLink: {
+        fontSize: 13,
+        fontFamily: "Inter_700Bold",
+        color: "#1337ec",
     },
 });

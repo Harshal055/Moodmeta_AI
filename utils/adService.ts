@@ -36,12 +36,14 @@ class AdService {
 
   private adEvents: AdEvent[] = [];
   private lastAdTime: number = 0;
+  private currentUserId: string | null = null;
   private adCooldownMs: number = 30000; // 30 seconds between ads
 
-  async init() {
+  async init(userId: string) {
     try {
+      this.currentUserId = userId;
       // Load ad config from storage
-      const stored = await AsyncStorage.getItem("@ad_config");
+      const stored = await AsyncStorage.getItem(`@ad_config_${userId}`);
       if (stored) {
         this.adConfig = JSON.parse(stored);
       }
@@ -213,7 +215,9 @@ class AdService {
           break;
       }
 
-      await AsyncStorage.setItem("@ad_config", JSON.stringify(this.adConfig));
+      if (this.currentUserId) {
+        await AsyncStorage.setItem(`@ad_config_${this.currentUserId}`, JSON.stringify(this.adConfig));
+      }
       logger.info(`Ad frequency set to: ${frequency}`);
     } catch (error) {
       logger.error("Failed to set ad frequency:", error);
@@ -226,7 +230,9 @@ class AdService {
   async disableAds(): Promise<void> {
     try {
       this.adConfig.enabled = false;
-      await AsyncStorage.setItem("@ad_config", JSON.stringify(this.adConfig));
+      if (this.currentUserId) {
+        await AsyncStorage.setItem(`@ad_config_${this.currentUserId}`, JSON.stringify(this.adConfig));
+      }
       logger.info("Ads disabled");
     } catch (error) {
       logger.error("Failed to disable ads:", error);
@@ -239,7 +245,9 @@ class AdService {
   async enableAds(): Promise<void> {
     try {
       this.adConfig.enabled = true;
-      await AsyncStorage.setItem("@ad_config", JSON.stringify(this.adConfig));
+      if (this.currentUserId) {
+        await AsyncStorage.setItem(`@ad_config_${this.currentUserId}`, JSON.stringify(this.adConfig));
+      }
       logger.info("Ads enabled");
     } catch (error) {
       logger.error("Failed to enable ads:", error);

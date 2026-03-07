@@ -1,13 +1,14 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import {
-    Animated,
-    Easing,
-    KeyboardAvoidingView,
-    Platform,
-    StatusBar,
-    Text,
-    View,
+  Alert,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  Text,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
@@ -21,6 +22,8 @@ export default function Building() {
   const updateProfile = useAuth((s) => s.updateProfile);
   const companionName =
     useAuth((s) => s.profile?.companion_name) || "Companion";
+
+  const profile = useAuth((s) => s.profile);
 
   useEffect(() => {
     // Fade in animation
@@ -51,20 +54,44 @@ export default function Building() {
 
   useEffect(() => {
     const finalizeOnboarding = async () => {
+      // Hydration Guard: Wait for profile to load from Supabase
+      if (!profile) return;
+
       try {
-        await updateProfile({ onboarded: true });
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        // Strict Profile Validation
+        if (!profile.companion_name || !profile.role || !profile.language) {
+          console.error("Profile validation failed: Missing required fields", profile);
+          Alert.alert("Setup Incomplete", "We couldn't find your companion details. Let's try setting them up again.");
+          router.replace("/(auth)/welcome");
+          return;
+        }
+
+        // Run the network request and the 5-sec animation timer concurrently
+        const [updateSuccess] = await Promise.all([
+          updateProfile({ onboarded: true }),
+          new Promise((resolve) => setTimeout(resolve, 5000))
+        ]);
+
+        if (!updateSuccess) {
+          console.error("Supabase failed to update onboarded status.");
+          Alert.alert("Connection Error", "Failed to save your profile. Please check your internet and try again.");
+          router.replace("/(auth)/welcome");
+          return;
+        }
+
         router.replace({
           pathname: "/(main)/chat",
           params: { companionName },
         });
       } catch (e) {
         console.error("Failed to complete onboarding", e);
+        Alert.alert("Error", "An unexpected error occurred. Please try again.");
+        router.replace("/(auth)/welcome");
       }
     };
 
     finalizeOnboarding();
-  }, []);
+  }, [profile]);
 
   return (
     <KeyboardAvoidingView

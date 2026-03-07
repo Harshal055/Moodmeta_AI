@@ -47,12 +47,15 @@ class OfflineSyncService {
     pending_count: 0,
   };
 
+  private currentUserId: string | null = null;
+
   /**
    * Initialize offline sync service
    * Sets up network listener and restores pending operations
    */
-  async init() {
+  async init(userId: string) {
     try {
+      this.currentUserId = userId;
       // Restore pending items from AsyncStorage
       await this.restorePendingItems();
 
@@ -300,13 +303,14 @@ class OfflineSyncService {
    * Save pending items to AsyncStorage (persistence)
    */
   private async savePendingItems() {
+    if (!this.currentUserId) return;
     try {
       const data = {
         chats: Array.from(this.pendingChats.values()),
         moods: Array.from(this.pendingMoods.values()),
         metadata: this.syncMetadata,
       };
-      await AsyncStorage.setItem("@offline_sync_data", JSON.stringify(data));
+      await AsyncStorage.setItem(`@offline_sync_data_${this.currentUserId}`, JSON.stringify(data));
     } catch (error) {
       logger.error("Failed to persist offline data:", error);
     }
@@ -316,8 +320,9 @@ class OfflineSyncService {
    * Restore pending items from AsyncStorage
    */
   private async restorePendingItems() {
+    if (!this.currentUserId) return;
     try {
-      const data = await AsyncStorage.getItem("@offline_sync_data");
+      const data = await AsyncStorage.getItem(`@offline_sync_data_${this.currentUserId}`);
       if (data) {
         const parsed = JSON.parse(data);
         this.pendingChats = new Map(parsed.chats.map((c: any) => [c.id, c]));
@@ -349,10 +354,13 @@ class OfflineSyncService {
    * Clear all offline data (for logout/reset)
    */
   async clearOfflineData() {
+    const userId = this.currentUserId;
     this.pendingChats.clear();
     this.pendingMoods.clear();
     this.syncMetadata.pending_count = 0;
-    await AsyncStorage.removeItem("@offline_sync_data");
+    if (userId) {
+      await AsyncStorage.removeItem(`@offline_sync_data_${userId}`);
+    }
     logger.info("Offline data cleared");
   }
 }

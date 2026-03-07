@@ -13,7 +13,8 @@ import { revenueCatService } from "../services/revenueCatService";
 // are silently dropped — the user sees nothing.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true, // Show the banner / heads-up notification
+    shouldShowBanner: true, // Show the banner / heads-up notification
+    shouldShowList: true, // Show in notification center
     shouldPlaySound: true, // Play the default notification sound
     shouldSetBadge: false, // We don't use badge counts in this app
   }),
@@ -25,7 +26,7 @@ export default function RootLayout() {
   const router = useRouter();
   const isInitialized = useAuth((s) => s.isInitialized);
   const [rcInitialized, setRcInitialized] = useState(false);
-  const notificationResponseListener = useRef<Notifications.Subscription>();
+  const notificationResponseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
     // Initialize RevenueCat SDK early
@@ -50,9 +51,7 @@ export default function RootLayout() {
 
     return () => {
       if (notificationResponseListener.current) {
-        Notifications.removeNotificationSubscription(
-          notificationResponseListener.current,
-        );
+        notificationResponseListener.current.remove();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,30 +1,30 @@
-import { Redirect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Index() {
+  const router = useRouter();
   const isInitialized = useAuth((s) => s.isInitialized);
   const onboarded = useAuth((s) => s.onboarded);
   const currentUser = useAuth((s) => s.currentUser);
 
-  // Show loading while auth initializes
-  if (!isInitialized) {
-    return (
-      <View className="flex-1 justify-center items-center bg-white">
-        <ActivityIndicator size="large" color="#FF3B30" />
-      </View>
-    );
-  }
+  useFocusEffect(
+    useCallback(() => {
+      if (isInitialized) {
+        if (onboarded && currentUser) {
+          router.replace("/(main)/chat");
+        } else {
+          router.replace("/(auth)/welcome");
+        }
+      }
+    }, [isInitialized, onboarded, currentUser?.id, router])
+  );
 
-  // Redirect based on auth + onboarding state
-  if (onboarded && currentUser) {
-    return <Redirect href="/(main)/chat" />;
-  }
-
-  if (!currentUser) {
-    return <Redirect href="/(auth)/welcome" />;
-  }
-
-  // Not onboarded yet, let default routing take over
-  return <Redirect href="/(auth)/welcome" />;
+  // Always show a loading indicator while the initial layout decides where to route
+  return (
+    <View className="flex-1 justify-center items-center bg-white">
+      <ActivityIndicator size="large" color="#FF3B30" />
+    </View>
+  );
 }

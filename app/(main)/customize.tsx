@@ -31,6 +31,8 @@ export default function CustomizeScreen() {
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
+    const isPremium = useAuth((s) => s.isPremium);
+
     const hasChanges = name.trim() !== profile?.companion_name || selectedRole !== profile?.role || avatarUrl !== profile?.avatar_url;
 
     const pickImage = async () => {
@@ -133,7 +135,13 @@ export default function CustomizeScreen() {
                 {/* ── Avatar Picker ── */}
                 <View className="items-center mb-8">
                     <TouchableOpacity
-                        onPress={pickImage}
+                        onPress={() => {
+                            if (!isPremium) {
+                                router.push("/(modals)/paywall");
+                                return;
+                            }
+                            pickImage();
+                        }}
                         disabled={isUploading}
                         className="relative w-28 h-28 rounded-full bg-[#E5E7EB] items-center justify-center overflow-hidden border-2 border-[#1a1a2e]"
                     >
@@ -149,7 +157,13 @@ export default function CustomizeScreen() {
                             </View>
                         )}
 
-                        {!isUploading && (
+                        {!isUploading && !isPremium && (
+                            <View className="absolute inset-0 bg-black/40 items-center justify-center">
+                                <Ionicons name="lock-closed" size={32} color="#fff" />
+                            </View>
+                        )}
+
+                        {!isUploading && isPremium && (
                             <View className="absolute bottom-0 w-full bg-black/50 py-1 items-center">
                                 <Text style={{ fontFamily: "Inter_500Medium", fontSize: 10, color: "#fff" }}>EDIT</Text>
                             </View>
@@ -158,24 +172,33 @@ export default function CustomizeScreen() {
                 </View>
 
                 <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#999", marginBottom: 12, marginLeft: 12 }}>
-                    COMPANION NAME
+                    COMPANION NAME {!isPremium && "🔒"}
                 </Text>
 
-                <View className="bg-white rounded-2xl border border-[#F0F0F0] p-4 mb-8">
-                    <TextInput
-                        value={name}
-                        onChangeText={setName}
-                        placeholder="e.g. Maya, Kai..."
-                        placeholderTextColor="#bbb"
-                        maxLength={20}
-                        style={{
-                            fontFamily: "Manrope_600SemiBold",
-                            fontSize: 18,
-                            color: "#1a1a2e",
-                            padding: 0,
-                        }}
-                    />
-                </View>
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={() => {
+                        if (!isPremium) router.push("/(modals)/paywall");
+                    }}
+                    className="bg-white rounded-2xl border border-[#F0F0F0] p-4 mb-8"
+                >
+                    <View pointerEvents={isPremium ? "auto" : "none"}>
+                        <TextInput
+                            value={name}
+                            onChangeText={setName}
+                            placeholder="e.g. Maya, Kai..."
+                            placeholderTextColor="#bbb"
+                            maxLength={20}
+                            editable={!!isPremium}
+                            style={{
+                                fontFamily: "Manrope_600SemiBold",
+                                fontSize: 18,
+                                color: "#1a1a2e",
+                                padding: 0,
+                            }}
+                        />
+                    </View>
+                </TouchableOpacity>
 
                 <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#999", marginBottom: 12, marginLeft: 12 }}>
                     RELATIONSHIP ROLE
@@ -187,7 +210,13 @@ export default function CustomizeScreen() {
                         return (
                             <TouchableOpacity
                                 key={r.id}
-                                onPress={() => setSelectedRole(r.id)}
+                                onPress={() => {
+                                    if (r.id === "custom" && !isPremium) {
+                                        router.push("/(modals)/paywall");
+                                        return;
+                                    }
+                                    setSelectedRole(r.id);
+                                }}
                                 activeOpacity={0.8}
                                 className="w-[48%] mb-3"
                             >
@@ -202,7 +231,11 @@ export default function CustomizeScreen() {
                                         alignItems: "center",
                                     }}
                                 >
-                                    <Text style={{ fontSize: 32, marginBottom: 8 }}>{r.icon}</Text>
+                                    {r.id === "custom" && !isPremium ? (
+                                        <Ionicons name="lock-closed" size={32} color="#1a1a2e" style={{ marginBottom: 8 }} />
+                                    ) : (
+                                        <Text style={{ fontSize: 32, marginBottom: 8 }}>{r.icon}</Text>
+                                    )}
                                     <Text
                                         style={{
                                             fontFamily: "Manrope_600SemiBold",
@@ -210,7 +243,7 @@ export default function CustomizeScreen() {
                                             color: "#1a1a2e",
                                         }}
                                     >
-                                        {r.label}
+                                        {r.id === "custom" && !isPremium ? "Pro Custom" : r.label}
                                     </Text>
                                     {isSelected && (
                                         <View

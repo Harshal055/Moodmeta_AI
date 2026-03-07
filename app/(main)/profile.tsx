@@ -9,6 +9,8 @@ export default function ProfileScreen() {
 
   const profile = useAuth((s) => s.profile);
   const isPremium = useAuth((s) => s.isPremium);
+  const user = useAuth((s) => s.currentUser);
+
   const companionName = profile?.companion_name || "Your Companion";
   const role = profile?.role || "friend";
 
@@ -39,15 +41,15 @@ export default function ProfileScreen() {
       label: "Upgrade to Premium",
       action: () => router.push("/(modals)/paywall"),
     },
-    {
+    ...(user?.is_anonymous ? [{
       icon: "🔗",
       label: "Save My Chats Forever",
       action: () => router.push("/(modals)/link-account"),
-    },
+    }] : []),
     {
-      icon: "🎨",
-      label: "Customize Companion",
-      action: () => router.push("/(main)/customize"),
+      icon: isPremium ? "🎨" : "🔒",
+      label: isPremium ? "Customize Companion" : "Pro: Customize Companion",
+      action: () => isPremium ? router.push("/(main)/customize") : router.push("/(modals)/paywall"),
     },
     {
       icon: "⚙️",
