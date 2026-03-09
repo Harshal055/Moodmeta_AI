@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
+  Image,
   StatusBar,
   Text,
   TouchableOpacity,
@@ -21,6 +22,7 @@ export default function UpgradeSuccessScreen() {
   const slideUpAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
+    logger.info("SCREEN_VIEW: UpgradeSuccess");
     // Scale-in animation for crown with staggered sequence
     Animated.sequence([
       Animated.parallel([
@@ -78,7 +80,11 @@ export default function UpgradeSuccessScreen() {
             marginBottom: 32,
           }}
         >
-          <Text style={{ fontSize: 120 }}>👑</Text>
+          <Image
+            source={require("../../assets/images/logo.png")}
+            style={{ width: 100, height: 100 }}
+            resizeMode="contain"
+          />
         </Animated.View>
 
         {/* Success Text */}

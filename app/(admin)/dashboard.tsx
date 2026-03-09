@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
     BackHandler,
+    Image,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -214,7 +214,11 @@ export default function AdminDashboard() {
     if (loading && !refreshing) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#1a1a2e" />
+                <Image
+                    source={require("../../assets/images/logo.png")}
+                    style={{ width: 64, height: 64, marginBottom: 16 }}
+                    resizeMode="contain"
+                />
                 <Text style={styles.loadingText}>Loading owner console...</Text>
             </View>
         );

@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -12,6 +13,16 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
+import { logger } from "../../utils/logger";
+
+const COMPANION_AVATARS: Record<string, any> = {
+  friend: require("../../assets/images/avatar_friend.png"),
+  boyfriend: require("../../assets/images/avatar_boyfriend.png"),
+  girlfriend: require("../../assets/images/avatar_girlfriend.png"),
+  mother: require("../../assets/images/avatar_mother.png"),
+  father: require("../../assets/images/avatar_father.png"),
+  default: require("../../assets/images/logo.png"),
+};
 
 export default function Building() {
   const router = useRouter();
@@ -26,6 +37,7 @@ export default function Building() {
   const profile = useAuth((s) => s.profile);
 
   useEffect(() => {
+    logger.info("SCREEN_VIEW: Building");
     // Fade in animation
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -108,16 +120,26 @@ export default function Building() {
             alignItems: "center",
           }}
         >
-          {/* Pulsing Heart */}
-          <Animated.Text
+          {/* Pulsing Avatar */}
+          <Animated.View
             style={{
-              fontSize: 80,
+              width: 120,
+              height: 120,
+              borderRadius: 60,
+              overflow: "hidden",
               marginBottom: 24,
+              backgroundColor: "#f0f0f0",
+              borderWidth: 2,
+              borderColor: "#FF6B9D",
               transform: [{ scale: pulseAnim }],
             }}
           >
-            💖
-          </Animated.Text>
+            <Image
+              source={COMPANION_AVATARS[profile?.role || "default"] || COMPANION_AVATARS.default}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+            />
+          </Animated.View>
 
           <Text
             className="text-center"

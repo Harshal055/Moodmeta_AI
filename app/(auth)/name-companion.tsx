@@ -1,14 +1,19 @@
-import { View, Text, TextInput, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { KeyboardAvoidingView, Platform, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
+import { logger } from "../../utils/logger";
 
 export default function NameCompanion() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const [name, setName] = useState("");
     const updateProfile = useAuth((s) => s.updateProfile);
+
+    useEffect(() => {
+        logger.info("SCREEN_VIEW: NameCompanion");
+    }, []);
 
     return (
         <View className="flex-1" style={{ backgroundColor: "#fff" }}>

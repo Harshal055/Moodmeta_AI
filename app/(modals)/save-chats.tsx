@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { Image, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -51,7 +51,11 @@ export default function SaveChats() {
               marginBottom: 20,
             }}
           >
-            <Text style={{ fontSize: 32 }}>💾</Text>
+            <Image
+              source={require("../../assets/images/logo.png")}
+              style={{ width: 50, height: 50 }}
+              resizeMode="contain"
+            />
           </View>
           <Text
             className="text-center mb-3"

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   Platform,
   ScrollView,
   Text,
@@ -548,9 +549,14 @@ export default function PaywallScreen() {
           >
             {PAYWALL_CONFIG.heroTitle}
           </Text>
-          <Text style={{ fontSize: 32, marginTop: 4, marginBottom: 8 }}>
-            {PAYWALL_CONFIG.heroEmoji}
-          </Text>
+          {/* Logo Replacement for Emoji */}
+          <View style={{ marginBottom: 12 }}>
+            <Image
+              source={require("../../assets/images/logo.png")}
+              style={{ width: 64, height: 64 }}
+              resizeMode="contain"
+            />
+          </View>
           <Text
             style={{
               fontFamily: "Inter_400Regular",

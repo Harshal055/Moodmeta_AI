@@ -2,14 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
@@ -147,11 +147,10 @@ export default function LanguagePicker() {
                 <TouchableOpacity
                   onPress={() => setSelectedLanguage(lang.id)}
                   activeOpacity={0.7}
-                  className={`p-5 rounded-xl border-2 ${
-                    isSelected
-                      ? "border-[#1a1a2e] bg-[#FAFAFA]"
-                      : "border-transparent bg-[#F7F7F8]"
-                  }`}
+                  className={`p-5 rounded-xl border-2 ${isSelected
+                    ? "border-[#1a1a2e] bg-[#FAFAFA]"
+                    : "border-transparent bg-[#F7F7F8]"
+                    }`}
                 >
                   <View className="flex-row items-center justify-between">
                     <View>

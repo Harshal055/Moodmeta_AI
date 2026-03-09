@@ -1,12 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { supabase } from "../lib/supabase";
@@ -19,8 +19,7 @@ const MOODS = [
   { score: 5, emoji: "😁", label: "Great" },
 ];
 
-const CHAT_SESSION_COUNT_KEY_PREFIX = "chat_sessions_";
-const MIN_CHAT_SESSIONS_FOR_MOOD_PROMPT = 3;
+const LAST_MOOD_PROMPT_KEY = "last_mood_prompt_timestamp";
 
 export function MoodModal() {
   const user = useAuth((s) => s.currentUser);
@@ -36,16 +35,18 @@ export function MoodModal() {
       try {
         if (isMounted) setIsLoading(true);
 
-        const sessionCountKey = `${CHAT_SESSION_COUNT_KEY_PREFIX}${user.id}`;
-        const rawSessionCount = await AsyncStorage.getItem(sessionCountKey);
-        const sessionCount = Number.parseInt(rawSessionCount || "0", 10) || 0;
+        // 1. Check if we already showed it in the last 24 hours
+        const lastShown = await AsyncStorage.getItem(`${LAST_MOOD_PROMPT_KEY}_${user.id}`);
+        const now = Date.now();
+        const oneDayMs = 24 * 60 * 60 * 1000;
 
-        if (sessionCount < MIN_CHAT_SESSIONS_FOR_MOOD_PROMPT) {
+        if (lastShown && now - Number.parseInt(lastShown, 10) < oneDayMs) {
           if (isMounted) setIsVisible(false);
           return;
         }
 
-        // Get start of today in UTC
+        // 2. Even if 24h passed, check Supabase to see if they logged a mood today 
+        // (as a fallback or if they logged it manually elsewhere)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -57,22 +58,18 @@ export function MoodModal() {
           .limit(1);
 
         if (error) {
-          // 525 = Supabase/network unavailable (graceful degradation)
-          // PGRST116 = Table doesn't exist (expected on first setup)
-          if (
-            error.code !== "PGRST116" &&
-            error.message !== "error code: 525"
-          ) {
+          if (error.code !== "PGRST116" && error.message !== "error code: 525") {
             console.error("Error checking mood:", error);
           }
-          // On any error, don't show the modal - app continues normally
           if (isMounted) setIsVisible(false);
           return;
         }
 
-        // If no logs today and user has enough chat sessions, show the modal
+        // If no logs today, show the modal
         if (isMounted && (!data || data.length === 0)) {
           setIsVisible(true);
+          // Update the "last shown" timestamp immediately so we don't spam
+          await AsyncStorage.setItem(`${LAST_MOOD_PROMPT_KEY}_${user.id}`, String(now));
         }
       } catch (err) {
         console.error("Failed to check mood:", err);
@@ -85,7 +82,7 @@ export function MoodModal() {
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [user?.id]);
 
   const handleSelectMood = async (score: number) => {
     if (!user) return;

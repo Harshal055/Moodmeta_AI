@@ -1,0 +1,47 @@
+{
+    "project_info": {
+        "project_number": "697681572577",
+        "project_id": "moodmateai-a844e",
+        "storage_bucket": "moodmateai-a844e.firebasestorage.app"
+    },
+    "client": [
+        {
+            "client_info": {
+                "mobilesdk_app_id": "1:697681572577:android:cecd77d9d2a95b8c9ebda0",
+                "android_client_info": {
+                    "package_name": "com.harshal.moodmateai"
+                }
+            },
+            "oauth_client": [
+                {
+                    "client_id": "697681572577-er1mlcjal74slqjp6sfdtgaqvfnm85dg.apps.googleusercontent.com",
+                    "client_type": 1,
+                    "android_info": {
+                        "package_name": "com.harshal.moodmateai",
+                        "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+                    }
+                },
+                {
+                    "client_id": "697681572577-r6p69g1t3g65689psclf089aed4g3nc0.apps.googleusercontent.com",
+                    "client_type": 3
+                }
+            ],
+            "api_key": [
+                {
+                    "current_key": "AIzaSyCBpabU10cgTVoUWU0aD-w2StOS9X6OLQY"
+                }
+            ],
+            "services": {
+                "appinvite_service": {
+                    "other_platform_oauth_client": [
+                        {
+                            "client_id": "697681572577-r6p69g1t3g65689psclf089aed4g3nc0.apps.googleusercontent.com",
+                            "client_type": 3
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "configuration_version": "1"
+}

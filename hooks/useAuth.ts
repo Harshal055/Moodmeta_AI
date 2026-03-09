@@ -10,6 +10,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import type { Session, User } from "@supabase/supabase-js";
 import { Alert } from "react-native";
 import { create } from "zustand";
@@ -33,6 +34,7 @@ export interface Profile {
   avatar_url: string | null;
   push_token: string | null;
   onboarded: boolean;
+  is_premium: boolean;
   created_at: string;
 }
 
@@ -51,6 +53,7 @@ interface AuthState {
   avatar_url: string | null;
   push_token: string | null;
   isPremium: boolean;
+  isAdmin: boolean;
 
   // Actions
   initialize: () => Promise<void>;
@@ -71,14 +74,17 @@ interface AuthState {
   ) => Promise<boolean>;
   updateAuthPushToken: (token: string) => Promise<void>;
   signOut: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>; // Placeholder
+  signInWithGoogle: () => Promise<void>;
+  linkGoogle: () => Promise<void>;
   transferAnonymousData: (oldUserId: string, newUserId: string) => Promise<void>;
 }
 
-// ── Promise Lock ─────────────────────────────────────────────────────
 let ensureProfilePromise: Promise<void> | null = null;
 let currentEnsuringUserId: string | null = null;
 let authSubscription: { unsubscribe: () => void } | null = null;
+let isMigrating = false; // B8: Migration Lock
+const ADMIN_UIDS = ["YOUR_ADMIN_UID_HERE"]; // B4: Hardcoded Admin UIDs (Replace with actual)
+let profileSubscription: any = null;
 
 // ── Store ────────────────────────────────────────────────────────────
 export const useAuth = create<AuthState>((set, get) => ({
@@ -96,6 +102,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   avatar_url: null,
   push_token: null,
   isPremium: false,
+  isAdmin: false,
 
   /**
    * Called once in _layout.tsx. Signs in anonymously if no
@@ -103,6 +110,20 @@ export const useAuth = create<AuthState>((set, get) => ({
    */
   initialize: async () => {
     if (get().isInitialized) return;
+
+    // 0. Initial Google Configuration
+    try {
+      const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+      logger.info("Auth: Configuring Google Sign-In with Web Client ID:", webClientId ? `${webClientId.substring(0, 10)}...` : "UNDEFINED");
+
+      GoogleSignin.configure({
+        webClientId: webClientId,
+        offlineAccess: true,
+      });
+      logger.info("Auth: Google Sign-In configured successfully");
+    } catch (e) {
+      logger.error("Auth: Google Sign-In config failed:", e);
+    }
 
     // Race the initialization logic against a 20-second timeout
     const initializationLogic = (async () => {
@@ -201,12 +222,32 @@ export const useAuth = create<AuthState>((set, get) => ({
             set({
               currentUser: null, session: null, profile: null, onboarded: false,
               role: null, avatar_url: null, push_token: null, isPremium: false,
+              isAdmin: false,
             });
+            // Also sign out from RevenueCat to be clean
+            revenueCatService.logout().catch(() => { });
+
+            // Cleanup profile subscription on sign-out
+            if (profileSubscription) {
+              profileSubscription.unsubscribe();
+              profileSubscription = null;
+            }
           } else if (newUser) {
-            // DETECT MIGRATION: If we transition from Anonymous -> Real Account with a DIFFERENT ID
-            if (oldUser && oldUser.is_anonymous && !newUser.is_anonymous && oldUser.id !== newUser.id) {
-              logger.info(`Auth: Detected User Switch during Link/Sign-In. Migrating ${oldUser.id} -> ${newUser.id}`);
-              await get().transferAnonymousData(oldUser.id, newUser.id);
+            // B1, B2, B6, B8: DETECT MIGRATION & ACCOUNT SWITCH
+            if (oldUser && oldUser.id !== newUser.id) {
+              // Only migrate if moving FROM Anonymous TO a real account
+              if (oldUser.is_anonymous && !newUser.is_anonymous) {
+                if (!isMigrating) {
+                  isMigrating = true;
+                  logger.info(`Auth: Detected Migration. ${oldUser.id} -> ${newUser.id}`);
+                  await get().transferAnonymousData(oldUser.id, newUser.id);
+                  isMigrating = false;
+                }
+              }
+
+              // B7: Sync RevenueCat ID immediately on any UID change
+              logger.info(`Auth: Syncing RevenueCat to new UID: ${newUser.id}`);
+              revenueCatService.login(newUser.id).catch(e => logger.error("RC Sync Error:", e));
             }
 
             set({ currentUser: newUser, session });
@@ -214,6 +255,7 @@ export const useAuth = create<AuthState>((set, get) => ({
           }
         });
         authSubscription = subscription;
+
 
         set({ isLoading: false, isInitialized: true });
         logger.info("Auth initialization complete");
@@ -277,9 +319,17 @@ export const useAuth = create<AuthState>((set, get) => ({
         // 2. Race condition handling: If no profile, try to create it or wait for trigger
         if (!prof) {
           logger.info("ensureProfile: Profile not found, attempting safe create...");
+          // B11: Sync avatar from social provider metadata if available
+          const user = get().currentUser;
+          const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
+
           const { data: newProf, error: insertError } = await supabase
             .from("profiles")
-            .upsert({ user_id: userId, onboarded: false }, { onConflict: "user_id" })
+            .upsert({
+              user_id: userId,
+              onboarded: false,
+              avatar_url: avatarUrl || null
+            }, { onConflict: "user_id" })
             .select()
             .maybeSingle();
 
@@ -299,8 +349,15 @@ export const useAuth = create<AuthState>((set, get) => ({
         }
 
         if (prof) {
+          const user = get().currentUser;
           const customerInfo = await revenueCatService.login(userId);
           const isRcPremium = revenueCatService.checkEntitlement(customerInfo);
+
+          // B4: Robust Admin check (Role-based with Email fallback)
+          const isAdmin =
+            prof.role === "admin" ||
+            prof.user_id === "af2c2707-6887-4638-89f4-34509747514b" || // Native Testing UID
+            user?.email === "harsh@moodmateai.com";
 
           set({
             profile: prof as Profile,
@@ -310,9 +367,51 @@ export const useAuth = create<AuthState>((set, get) => ({
             language: prof.language,
             avatar_url: prof.avatar_url,
             push_token: prof.push_token,
-            isPremium: isRcPremium,
+            isPremium: isRcPremium || (prof.is_premium as boolean) === true,
+            isAdmin,
           });
-          logger.info("ensureProfile: Success");
+
+          // ── Realtime Profile Subscription ─────────────────────
+          // This makes the app "alive" — any change in Supabase dashboard
+          // (role, is_premium, etc.) reflects in the app INSTANTLY.
+          if (profileSubscription) profileSubscription.unsubscribe();
+
+          profileSubscription = supabase
+            .channel(`profile_realtime_${userId}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "profiles",
+                filter: `user_id=eq.${userId}`,
+              },
+              async (payload) => {
+                logger.info("Realtime: Profile updated", payload.eventType);
+                const updatedProf = payload.new as Profile;
+                if (updatedProf) {
+                  const updatedIsAdmin =
+                    updatedProf.role === "admin" ||
+                    updatedProf.user_id === "af2c2707-6887-4638-89f4-34509747514b" ||
+                    user?.email === "harsh@moodmateai.com";
+
+                  set({
+                    profile: updatedProf,
+                    onboarded: updatedProf.onboarded,
+                    role: updatedProf.role,
+                    country: updatedProf.country,
+                    language: updatedProf.language,
+                    avatar_url: updatedProf.avatar_url,
+                    push_token: updatedProf.push_token,
+                    isPremium: isRcPremium || updatedProf.is_premium === true,
+                    isAdmin: updatedIsAdmin,
+                  });
+                }
+              }
+            )
+            .subscribe();
+
+          logger.info("ensureProfile: Success + Realtime Active");
         } else {
           throw new Error("Critical: Could not establish profile record.");
         }
@@ -437,8 +536,15 @@ export const useAuth = create<AuthState>((set, get) => ({
         country: null,
         language: null,
         avatar_url: null,
+        push_token: null,
         isPremium: false,
+        isAdmin: false,
       });
+
+      if (profileSubscription) {
+        profileSubscription.unsubscribe();
+        profileSubscription = null;
+      }
 
       // Priority 2: Attempt remote sign out
       await supabase.auth.signOut({ scope: "local" });
@@ -451,7 +557,117 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   signInWithGoogle: async () => {
-    logger.info("Future Enhancement: Google Auth");
+    try {
+      set({ isLoading: true });
+      logger.info("Auth: Starting Google Sign-In...");
+
+      // 1. Initial Checks
+      await GoogleSignin.hasPlayServices();
+
+      // 2. Force Account Picker by signing out first
+      try {
+        await GoogleSignin.signOut();
+      } catch (e) {
+        // Ignore sign-out errors (e.g. if not signed in)
+      }
+
+      // 3. Trigger native Sign-In
+      const response = await GoogleSignin.signIn();
+      const idToken = response.data?.idToken;
+
+      if (!idToken) {
+        // Handle case where user closes popup via back button or X (B3, B9, B10)
+        logger.info("Auth: Google Sign-In returned no token (cancelled)");
+        return;
+      }
+
+      // 4. Authenticate with Supabase using the ID Token
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+
+      if (error) throw error;
+
+      logger.info("Auth: Google Sign-In success", data.user?.email);
+      // Wait for profile to be ready so component navigation sees correct onboarded status
+      if (data.user) {
+        await get().ensureProfile(data.user.id);
+      }
+    } catch (error: any) {
+      // B3: Handle Cancellation specifically
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        logger.info("Auth: Google Sign-In cancelled by user");
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        logger.warn("Auth: Google Sign-In already in progress");
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert("Google Play Services", "Please ensure Google Play Services are available on your device.");
+      } else {
+        throw error;
+      }
+    } finally {
+      // B10: Always clear loading state
+      set({ isLoading: false });
+    }
+  },
+
+  linkGoogle: async () => {
+    try {
+      set({ isLoading: true });
+      logger.info("Auth: Starting Native Google Linking...");
+
+      // 1. Sign In Natively
+      // 1. Force Account Picker by signing out first
+      try {
+        await GoogleSignin.signOut();
+      } catch (e) {
+        // Ignore
+      }
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      const idToken = response.data?.idToken;
+
+      if (!idToken) {
+        logger.info("Auth: Google linking cancelled (no token)");
+        return;
+      }
+
+      // 3. Link with Supabase using signInWithIdToken
+      // B5/B6: This replaces linkIdentity and is much more robust for native mobile.
+      // It handles account merging and triggers onAuthStateChange migration.
+      const { data: linkData, error: linkError } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+
+      if (linkError) {
+        // Handle common linking errors
+        if (linkError.message.includes("already linked") || linkError.message.includes("already registered")) {
+          throw new Error("This Google account is already linked to another user.");
+        }
+        throw linkError;
+      }
+
+      // 4. Force state refresh to update is_anonymous: false
+      const { data: { user: updatedUser } } = await supabase.auth.getUser();
+      if (updatedUser) {
+        set({ currentUser: updatedUser });
+        logger.info("Auth: User state refreshed after linking", { isAnonymous: updatedUser.is_anonymous });
+        // Wait for profile refresh after migration
+        await get().ensureProfile(updatedUser.id);
+      }
+
+      logger.info("Auth: Native Google Linking success");
+      Alert.alert("Success 🎉", "Your account is now securely linked to Google!");
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        logger.info("Auth: Google Link cancelled");
+      } else {
+        throw error;
+      }
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
   /**
@@ -483,8 +699,30 @@ export const useAuth = create<AuthState>((set, get) => ({
         .eq("user_id", oldUserId);
       if (memoryError) logger.warn("Migration: AI Memory move failed (might not exist):", memoryError.message);
 
-      // 4. Clean up old profile if it's empty/obsolete
-      // We don't delete immediately to be safe, but we could mark it.
+      // 4. Migrate Profile Fields (Companion, Role, etc.)
+      const oldProfile = get().profile;
+      if (oldProfile) {
+        logger.info("Migration: Moving profile settings...");
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            companion_name: oldProfile.companion_name,
+            role: oldProfile.role,
+            language: oldProfile.language,
+            country: oldProfile.country,
+            onboarded: oldProfile.onboarded,
+            avatar_url: oldProfile.avatar_url,
+            is_premium: oldProfile.is_premium,
+          })
+          .eq("user_id", newUserId);
+
+        if (profileError) {
+          logger.error("Migration: Profile merge failed:", profileError.message);
+        } else {
+          // Force a local profile refresh
+          await get().ensureProfile(newUserId);
+        }
+      }
 
       logger.info("MIGRATION: Completed successfully");
     } catch (err) {

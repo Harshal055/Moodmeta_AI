@@ -1,3 +1,4 @@
+import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -6,6 +7,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import "../global.css";
 import { useAuth } from "../hooks/useAuth";
 import { revenueCatService } from "../services/revenueCatService";
+import { NotificationService } from "../utils/notificationService";
 
 // ── Notification handler ────────────────────────────────────────────
 // This tells the OS what to do when a push notification arrives while
@@ -28,6 +30,18 @@ export default function RootLayout() {
   const [rcInitialized, setRcInitialized] = useState(false);
   const notificationResponseListener = useRef<Notifications.Subscription | null>(null);
 
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular: require("../assets/fonts/Inter_400Regular.ttf"),
+    Inter_500Medium: require("../assets/fonts/Inter_500Medium.ttf"),
+    Inter_700Bold: require("../assets/fonts/Inter_700Bold.ttf"),
+    Inter_800ExtraBold: require("../assets/fonts/Inter_800ExtraBold.ttf"),
+    Manrope_500Medium: require("../assets/fonts/Manrope_500Medium.ttf"),
+    Manrope_600SemiBold: require("../assets/fonts/Manrope_600SemiBold.ttf"),
+    Manrope_700Bold: require("../assets/fonts/Manrope_700Bold.ttf"),
+    Manrope_800ExtraBold: require("../assets/fonts/Manrope_800ExtraBold.ttf"),
+    Rosehot: require("../assets/fonts/Rosehot.ttf"),
+  });
+
   useEffect(() => {
     // Initialize RevenueCat SDK early
     if (!rcInitialized) {
@@ -37,7 +51,15 @@ export default function RootLayout() {
 
     // Initialize anonymous auth immediately
     if (!isInitialized) {
-      useAuth.getState().initialize();
+      useAuth.getState().initialize().then(() => {
+        // Initialize notifications after auth is ready
+        NotificationService.init().then(() => {
+          NotificationService.scheduleDailyReminder();
+        });
+      });
+    } else {
+      // Auth already initialized (subsequent mounts)
+      NotificationService.scheduleDailyReminder();
     }
 
     // ── Listen for notification taps ──────────────────────────────
@@ -58,11 +80,15 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    // Hide splash screen only after auth is initialized
-    if (isInitialized) {
+    // Hide splash screen only after auth is initialized AND fonts are loaded
+    if (isInitialized && fontsLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [isInitialized]);
+  }, [isInitialized, fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <ErrorBoundary>

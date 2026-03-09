@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { getLocales } from "expo-localization";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ImageBackground,
   ScrollView,
@@ -13,32 +13,33 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
+import { logger } from "../../utils/logger";
 
 const roles = [
   {
     id: "friend",
     label: "Friend",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCv2y-cN2wc5IoHc8NoVi5GR1XkvrzFpfWcArI3xrVEKeQ71khH-I7EnqdNjLxEgCwNFQEPOyG-S_2-SyHjXbwgmMKFw55LIH5McpKI1Bizuv_S1hSIp5JJl572Yz5w08iq1ovNakyMq3DqbddXL9ZYDJ1ASJjhe26x77GLa76KZxcY96qkn4icJF33e3fuJNV_M6Jn6XVyVe5zJ-_q4N46JCRyu-34sh1qx60XIrHRi-vXr470gHOcjfKW46OZtButaM7UgGWHzzUW"
+    image: require("../../assets/images/avatar_friend.png")
   },
   {
     id: "boyfriend",
     label: "Boyfriend",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuByqu9MS8Vl3F-Bk31qqfZBqgBvYeuy0z1ttk66pvcsa-C74EKXEmUaH_yk2Qz9hBgeKvG62Pz2bYzoMc0f7I9knc6ZpNrrbyxY1_OVSvbsxmiocarVChEENFSx-N_EaZanA99X6-8h0X8uO4eIf64M_hzmvg3nFd1Y7-fejA1IM8iWAZNBcQ47dKuW8acV03gJUpQTApIxc8T3OOyDSNKbwR5Pj09YS36kqG9AjGddkncHr7HrcdXAnCcw2kdxu3DuG4tyk93kHqsD"
+    image: require("../../assets/images/avatar_boyfriend.png")
   },
   {
     id: "girlfriend",
     label: "Girlfriend",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuB09DEyjudMCxz2mo5B8pTLYxjOYibrc_QkwuJ2FZP7bGEojgiF1r91qbUyy7orGHh3t7rB3ZieyAkFoN3GsJeVDybExZF_9RWW6XiKN6ReFjmXp02AA9-Z9yTIaYNwHTwXvtTdBYzYViyo4jNc_WsUV44ZU3xLbtZDBE4fksSEB6afaASZ8ItzQLPQswyQpV3LgL4bD56BiwDQKEVEqDsMK7ziYKRYb40nX5F_3JjMylhZqjg4XWeOaJd5tWtgJ5eI4CtqA5Bwa25a"
+    image: require("../../assets/images/avatar_girlfriend.png")
   },
   {
     id: "mother",
     label: "Mother",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCe1F6kC2yi-WFuN0nwL_9BYc_nFGlWOgM7mQnPJ_MnVLejnXs3ajjZuE-JU11dKhJB21SQgjWNO14yL4PT62_jnAAld7N4sRJeUrjNgvr6aTMBJ4yLEBFT2Pbcpl4NjeVan246FE0OLg83vUdtrZwZRxJ2gMlzq-rET1tOIH4-Vkk6JTEj6GrwUiv6OdJqZY_xdAnmEz_CLga65q3lYumsdMYofiR3Mh1e19BWmd2zWJlGc255Y2InR03HR7NEvuCGgWs21_l1cHUo"
+    image: require("../../assets/images/avatar_mother.png")
   },
   {
     id: "father",
     label: "Father",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCi0e-puTwqBjXuyX_XpeN9sx4Qdd4_YPi30aJdYnzk5f6UVTjH8OcShR9MDV4NP256EXJiurwjtxat-dBXJFxHZ9zwvqgzoPEun6Y5WBi-ZAAdVUpCjRunYh2-HId-NWcHphrQ6KlcSIlCUC0rHyOlgxXABAcPwbkVObyvl_fLtOsJS-yDHG0c8lPycg4H0PvhDC_qly6tR4lb88HhyxXw9gaPZohIr3YGqnWyGm2gGDxoZbMrRbqeBrVJ2nHnmHdnZQrWp4xHiSJX"
+    image: require("../../assets/images/avatar_father.png")
   },
   {
     id: "custom",
@@ -58,6 +59,10 @@ export default function RolePicker() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const updateProfile = useAuth((s) => s.updateProfile);
   const isPremium = useAuth((s) => s.isPremium);
+
+  useEffect(() => {
+    logger.info("SCREEN_VIEW: RolePicker");
+  }, []);
 
   return (
     <View className="flex-1 bg-[#f6f6f8]">
@@ -131,7 +136,7 @@ export default function RolePicker() {
               >
                 {role.image ? (
                   <ImageBackground
-                    source={{ uri: role.image }}
+                    source={role.image}
                     resizeMode="cover"
                     style={{ width: "100%", height: "100%", justifyContent: "flex-end", padding: 12 }}
                     imageStyle={{ borderRadius: 14 }}

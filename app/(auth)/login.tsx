@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
@@ -13,6 +14,7 @@ import {
     View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import { logger } from "../../utils/logger";
 
@@ -43,8 +45,8 @@ export default function LoginScreen() {
 
             if (error) throw error;
 
-            // Redirect logic
-            if (cleanEmail === ADMIN_EMAIL) {
+            // Redirect logic (B4: Use robust store-based check)
+            if (useAuth.getState().isAdmin) {
                 router.replace("/(admin)/dashboard");
             } else {
                 router.replace("/(main)/chat");
@@ -68,9 +70,11 @@ export default function LoginScreen() {
                 <View style={styles.card}>
                     {/* Logo Area */}
                     <View style={styles.logoContainer}>
-                        <View style={styles.logoIcon}>
-                            <Ionicons name="hardware-chip" size={20} color="#fff" />
-                        </View>
+                        <Image
+                            source={require("../../assets/images/logo.png")}
+                            style={{ width: 40, height: 40, marginRight: 8 }}
+                            resizeMode="contain"
+                        />
                         <Text style={styles.logoText}>MoodMateAI</Text>
                     </View>
 
@@ -139,11 +143,36 @@ export default function LoginScreen() {
 
                         {/* Social Buttons */}
                         <View style={styles.socialRow}>
-                            <TouchableOpacity style={styles.socialButton}>
+                            <TouchableOpacity
+                                style={styles.socialButton}
+                                onPress={async () => {
+                                    setLoading(true);
+                                    try {
+                                        await useAuth.getState().signInWithGoogle();
+                                        // Router should handle the rest via store state, 
+                                        // but we force it here for immediate response
+                                        const { onboarded, isAdmin } = useAuth.getState();
+                                        if (isAdmin) {
+                                            router.replace("/(admin)/dashboard");
+                                        } else if (onboarded) {
+                                            router.replace("/(main)/chat");
+                                        } else {
+                                            router.replace("/(auth)/role-picker");
+                                        }
+                                    } catch (e) {
+                                        // Error handled in store
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }}
+                            >
                                 <Ionicons name="logo-google" size={18} color="#EA4335" />
                                 <Text style={styles.socialButtonText}>Google</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.socialButton}>
+                            <TouchableOpacity
+                                style={styles.socialButton}
+                                onPress={() => Alert.alert("Coming Soon 🍎", "Apple Login will be available in the next update! We are currently working on the final approval.")}
+                            >
                                 <Ionicons name="logo-apple" size={18} color="#000" />
                                 <Text style={styles.socialButtonText}>Apple</Text>
                             </TouchableOpacity>

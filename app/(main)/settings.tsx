@@ -1,13 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -28,12 +32,22 @@ const PRIVACY_POLICY_URL =
 const TERMS_OF_SERVICE_URL =
   "https://harshal055.github.io/moodmateai-site/terms.html";
 
+const COMPANION_AVATARS: Record<string, any> = {
+  friend: require("../../assets/images/avatar_friend.png"),
+  boyfriend: require("../../assets/images/avatar_boyfriend.png"),
+  girlfriend: require("../../assets/images/avatar_girlfriend.png"),
+  mother: require("../../assets/images/avatar_mother.png"),
+  father: require("../../assets/images/avatar_father.png"),
+  default: require("../../assets/images/logo.png"),
+};
+
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const user = useAuth((s) => s.currentUser);
   const profile = useAuth((s) => s.profile);
   const isPremium = useAuth((s) => s.isPremium);
+  const isAdmin = useAuth((s) => s.isAdmin);
   const signOut = useAuth((s) => s.signOut);
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [isClearingChat, setIsClearingChat] = useState(false);
@@ -42,6 +56,33 @@ export default function SettingsScreen() {
   const [wellnessResources, setWellnessResources] = useState<any[]>([]);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutModalType, setLogoutModalType] = useState<"anonymous" | "normal" | null>(null);
+  const [showAnonymousPrompt, setShowAnonymousPrompt] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [isSendingFeedback, setIsSendingFeedback] = useState(false);
+
+  useEffect(() => {
+    logger.info("SCREEN_VIEW: Settings");
+  }, []);
+
+  // Check if user dismissed the prompt before
+  useEffect(() => {
+    async function checkPrompt() {
+      if (user?.is_anonymous && user?.id) {
+        const dismissed = await AsyncStorage.getItem(`dismissed_anonymous_prompt_${user.id}`);
+        if (!dismissed) setShowAnonymousPrompt(true);
+      } else {
+        setShowAnonymousPrompt(false);
+      }
+    }
+    checkPrompt();
+  }, [user?.id, user?.is_anonymous]);
+
+  const handleDismissPrompt = async () => {
+    if (!user?.id) return;
+    setShowAnonymousPrompt(false);
+    await AsyncStorage.setItem(`dismissed_anonymous_prompt_${user.id}`, "true");
+  };
 
   const handleRestorePurchases = async () => {
     setIsRestoringPurchases(true);
@@ -80,6 +121,7 @@ export default function SettingsScreen() {
             if (!user) return;
             setIsClearingChat(true);
             try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               // Delete all chats but keep the profile
               await supabase.from("chats").delete().eq("user_id", user.id);
               Alert.alert("Success", "Chat history cleared! 🧹");
@@ -168,8 +210,12 @@ export default function SettingsScreen() {
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" }}>
-                <Text style={{ fontSize: 32 }}>❤️</Text>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.3)", overflow: "hidden" }}>
+                <Image
+                  source={profile.avatar_url ? { uri: profile.avatar_url } : (COMPANION_AVATARS[profile.role || "default"] || COMPANION_AVATARS.default)}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
               </View>
               <View style={{ marginLeft: 16, flex: 1 }}>
                 <Text
@@ -211,10 +257,11 @@ export default function SettingsScreen() {
                 borderColor: "rgba(255,255,255,0.3)",
               }}
               onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 if (!isPremium) {
                   router.push("/(modals)/paywall");
                 } else {
-                  router.push("/(auth)/welcome");
+                  router.push("/(auth)/role-picker");
                 }
               }}
             >
@@ -229,6 +276,88 @@ export default function SettingsScreen() {
               >
                 {isPremium ? "Change Companion" : "Pro: Change Companion"}
               </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Anonymous Warning Banner */}
+        {showAnonymousPrompt && user?.is_anonymous && (
+          <View
+            style={{
+              backgroundColor: "#FFF9E6",
+              borderRadius: 20,
+              padding: 24,
+              marginBottom: 32,
+              borderWidth: 1,
+              borderColor: "#FEF3C7",
+              position: "relative",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.05,
+              shadowRadius: 10,
+              elevation: 2,
+            }}
+          >
+            <TouchableOpacity
+              onPress={handleDismissPrompt}
+              style={{ position: "absolute", right: 16, top: 16, padding: 4, zIndex: 10 }}
+            >
+              <Ionicons name="close" size={22} color="#92400E" />
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="shield-checkmark" size={26} color="#92400E" />
+              </View>
+              <View style={{ marginLeft: 16, flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: "Manrope_800ExtraBold",
+                    fontSize: 18,
+                    color: "#92400E",
+                  }}
+                >
+                  Backup your data
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 12,
+                    color: "#B45309",
+                  }}
+                >
+                  Highly recommended
+                </Text>
+              </View>
+            </View>
+            <Text
+              style={{
+                fontFamily: "Inter_400Regular",
+                fontSize: 14,
+                color: "#92400E",
+                lineHeight: 22,
+                marginBottom: 20,
+              }}
+            >
+              You're currently in Guest Mode. Link your account to sync your chats and mood insights across all your devices!
+            </Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#92400E",
+                borderRadius: 16,
+                paddingVertical: 14,
+                alignItems: "center",
+                shadowColor: "#92400E",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+              }}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/(modals)/link-account");
+              }}
+            >
+              <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 15, color: "white" }}>Link My Account Now</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -535,32 +664,38 @@ export default function SettingsScreen() {
                 <Ionicons name="chevron-forward" size={16} color="#ccc" />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: 12,
-                }}
-                onPress={() => router.push("/(modals)/link-account")}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F0F9FF", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="link" size={18} color="#0EA5E9" />
+              {/* Link Account - Only for Anonymous */}
+              {user?.is_anonymous && (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: 12,
+                  }}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/(modals)/link-account");
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F0F9FF", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="link" size={18} color="#0EA5E9" />
+                    </View>
+                    <Text
+                      style={{
+                        fontFamily: "Inter_500Medium",
+                        fontSize: 14,
+                        color: "#666",
+                        marginLeft: 12,
+                      }}
+                    >
+                      Link Account
+                    </Text>
                   </View>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 14,
-                      color: "#666",
-                      marginLeft: 12,
-                    }}
-                  >
-                    Link Account
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="#ccc" />
-              </TouchableOpacity>
+                  <Ionicons name="chevron-forward" size={16} color="#ccc" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -746,7 +881,7 @@ export default function SettingsScreen() {
 
 
         {/* Admin Section (Owner Only) */}
-        {user?.email === "harsh@moodmateai.com" && (
+        {isAdmin && (
           <>
             <Text
               style={{
@@ -843,34 +978,7 @@ export default function SettingsScreen() {
         <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
           <TouchableOpacity
             className="flex-row items-center justify-between p-4 border-b border-[#F5F5F5]"
-            onPress={() => {
-              Alert.prompt(
-                "Send Feedback",
-                "How can we improve MoodMateAI? Your feedback goes directly to the developer.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Send",
-                    onPress: async (msg?: string) => {
-                      if (!msg) return;
-                      try {
-                        const { error } = await supabase.from("feedback" as any).insert({
-                          user_id: user?.id,
-                          message: msg,
-                          rating: 5,
-                        });
-                        if (error) throw error;
-                        Alert.alert("Thank You!", "Your feedback has been received. ❤️");
-                      } catch (e) {
-                        logger.error("Feedback failed", e);
-                        Alert.alert("Error", "Could not send feedback. Try again later.");
-                      }
-                    },
-                  },
-                ],
-                "plain-text"
-              );
-            }}
+            onPress={() => setShowFeedbackModal(true)}
           >
             <View className="flex-row items-center gap-3">
               <View className="w-10 h-10 rounded-full bg-[#F0FDF4] items-center justify-center">
@@ -987,10 +1095,14 @@ export default function SettingsScreen() {
         </Text>
 
         <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
+          {/* Link Account - Only for Anonymous */}
           {user?.is_anonymous && (
             <TouchableOpacity
               className="flex-row items-center justify-between p-4 border-b border-[#F5F5F5]"
-              onPress={() => router.push("/(modals)/link-account")}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/(modals)/link-account");
+              }}
             >
               <View className="flex-row items-center gap-3">
                 <View className="w-10 h-10 rounded-full bg-[#EFF6FF] items-center justify-center">
@@ -1013,6 +1125,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             className="flex-row items-center justify-between p-4"
             onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               setLogoutModalType(user?.is_anonymous ? "anonymous" : "normal");
               setShowLogoutModal(true);
             }}
@@ -1079,6 +1192,87 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Custom Feedback Modal */}
+      <Modal visible={showFeedbackModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <Text style={{ fontFamily: "Manrope_800ExtraBold", fontSize: 22, color: "#1a1a2e" }}>Send Feedback</Text>
+              <TouchableOpacity onPress={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}>
+                <Ionicons name="close-circle" size={32} color="#ccc" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#666", marginBottom: 16 }}>
+              How can we improve MoodMateAI? Your thoughts help us make the app better for everyone.
+            </Text>
+
+            <TextInput
+              multiline
+              placeholder="Tell us what's on your mind..."
+              value={feedbackMessage}
+              onChangeText={setFeedbackMessage}
+              placeholderTextColor="#999"
+              style={{
+                backgroundColor: "#F8F9FA",
+                borderRadius: 16,
+                padding: 16,
+                height: 150,
+                textAlignVertical: "top",
+                fontFamily: "Inter_400Regular",
+                fontSize: 16,
+                color: "#1a1a2e",
+                borderWidth: 1,
+                borderColor: "#E9ECEF",
+                marginBottom: 24,
+              }}
+            />
+
+            <TouchableOpacity
+              disabled={!feedbackMessage.trim() || isSendingFeedback}
+              style={{
+                backgroundColor: feedbackMessage.trim() ? "#FF6B9D" : "#FFC2D6",
+                borderRadius: 16,
+                paddingVertical: 18,
+                alignItems: "center",
+                flexDirection: "row",
+                justifyContent: "center",
+                opacity: isSendingFeedback ? 0.7 : 1,
+              }}
+              onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setIsSendingFeedback(true);
+                try {
+                  const { error } = await supabase.from("feedback" as any).insert({
+                    user_id: user?.id,
+                    message: feedbackMessage.trim(),
+                    rating: 5,
+                  });
+                  if (error) throw error;
+                  Alert.alert("Success! 🎉", "Thank you for your feedback. We'll look into it!");
+                  setShowFeedbackModal(false);
+                  setFeedbackMessage("");
+                } catch (e) {
+                  logger.error("Feedback error:", e);
+                  Alert.alert("Error", "Could not send feedback. Please try again later.");
+                } finally {
+                  setIsSendingFeedback(false);
+                }
+              }}
+            >
+              {isSendingFeedback ? (
+                <ActivityIndicator color="white" style={{ marginRight: 8 }} />
+              ) : (
+                <Ionicons name="send" size={18} color="white" style={{ marginRight: 8 }} />
+              )}
+              <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 16, color: "white" }}>
+                {isSendingFeedback ? "Sending..." : "Submit Feedback"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Custom Logout Modal */}
       <Modal visible={showLogoutModal} transparent animationType="fade">
@@ -1155,7 +1349,7 @@ export default function SettingsScreen() {
             )}
           </View>
         </View>
-      </Modal>
-    </View>
+      </Modal >
+    </View >
   );
 }

@@ -7,6 +7,7 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import { Audio as ExpoAudio } from "expo-av";
 import * as Crypto from "expo-crypto";
 import * as Haptics from "expo-haptics";
@@ -45,9 +46,17 @@ import { logger } from "../../utils/logger";
 import { offlineSyncService } from "../../utils/offlineSyncService";
 import { speakMessage, stopSpeech } from "../../utils/voiceService";
 
+const MESSAGES_PER_PAGE = 20;
+const CURRENT_USER = { _id: 1, name: "You" };
 const FREE_MESSAGE_LIMIT = 20;
-const CHAT_SESSION_COUNT_KEY_PREFIX = "chat_sessions_";
-const MESSAGES_PER_PAGE = 30;
+const COMPANION_AVATARS: Record<string, any> = {
+  friend: require("../../assets/images/avatar_friend.png"),
+  boyfriend: require("../../assets/images/avatar_boyfriend.png"),
+  girlfriend: require("../../assets/images/avatar_girlfriend.png"),
+  mother: require("../../assets/images/avatar_mother.png"),
+  father: require("../../assets/images/avatar_father.png"),
+  default: require("../../assets/images/logo.png"),
+};
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -77,6 +86,7 @@ export default function ChatScreen() {
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [showAd, setShowAd] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const recordingRef = useRef<ExpoAudio.Recording | null>(null);
   const trackedSessionUserRef = useRef<string | null>(null);
 
@@ -98,18 +108,18 @@ export default function ChatScreen() {
     () => ({
       _id: 2,
       name: companionName,
-      avatar: profile?.avatar_url || "https://i.pravatar.cc/150?img=47", // Use custom avatar if available
+      avatar: profile?.avatar_url || COMPANION_AVATARS[userRole] || COMPANION_AVATARS.default,
     }),
-    [companionName, profile?.avatar_url],
+    [companionName, profile?.avatar_url, userRole],
   );
 
-  const CURRENT_USER = useMemo(
-    () => ({
-      _id: 1,
-      name: "You",
-    }),
-    [],
-  );
+  // ── Network Connectivity Monitoring ─────────────────────────────────
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOnline(!!state.isConnected);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // ── Initialize services ────────────────────────────────────────────
   useEffect(() => {
@@ -147,24 +157,6 @@ export default function ChatScreen() {
       }
     };
   }, [user?.id, isPremium]);
-
-  // ── Chat session tracking (for delayed mood prompt) ──────────────
-  useEffect(() => {
-    if (!user?.id) return;
-    if (trackedSessionUserRef.current === user.id) return;
-
-    trackedSessionUserRef.current = user.id;
-    const sessionCountKey = `${CHAT_SESSION_COUNT_KEY_PREFIX}${user.id}`;
-
-    AsyncStorage.getItem(sessionCountKey)
-      .then((raw) => {
-        const currentCount = Number.parseInt(raw || "0", 10) || 0;
-        return AsyncStorage.setItem(sessionCountKey, String(currentCount + 1));
-      })
-      .catch((err) => {
-        logger.warn("Could not update chat session count", err);
-      });
-  }, [user?.id]);
 
   // ── Toast auto-hide ──────────────────────────────────────────────
   useEffect(() => {
@@ -245,6 +237,17 @@ export default function ChatScreen() {
 
       if (error) {
         logger.error("Load history error:", error.message);
+        // If we are offline and have no messages, show a local greeting
+        if (messages.length === 0) {
+          setMessages([
+            {
+              _id: "welcome-offline",
+              text: "Hey there! I can't reach the server right now, but I'm still here for you. (Offline Mode)",
+              createdAt: new Date(),
+              user: { _id: 2, name: profile?.companion_name || "Companion" },
+            },
+          ]);
+        }
       } else if (data) {
         const formattedHistory: IMessage[] = data.map((msg: any) => ({
           _id: msg.id,
@@ -783,25 +786,6 @@ export default function ChatScreen() {
     await streamAssistantReply(retryPayload.text, retryPayload.history, false);
   }, [retryPayload, user, streamAssistantReply]);
 
-  // ── Auth loading state ────────────────────────────────────────────
-  if (isAuthLoading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-[#F8FBFF]">
-        <ActivityIndicator size="large" color="#1a1a2e" />
-        <Text
-          style={{
-            fontFamily: "Inter_400Regular",
-            fontSize: 14,
-            color: "#999",
-            marginTop: 12,
-          }}
-        >
-          Connecting...
-        </Text>
-      </View>
-    );
-  }
-
   // ── Custom UI Renders for GiftedChat (Memoized for Performance) ──
 
   // Voice message handler (Pro feature)
@@ -1056,6 +1040,25 @@ export default function ChatScreen() {
       </Send>
     );
   }, []);
+
+  // ── Auth loading state ────────────────────────────────────────────
+  if (isAuthLoading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#F8FBFF]">
+        <ActivityIndicator size="large" color="#1a1a2e" />
+        <Text
+          style={{
+            fontFamily: "Inter_400Regular",
+            fontSize: 14,
+            color: "#999",
+            marginTop: 12,
+          }}
+        >
+          Connecting...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView

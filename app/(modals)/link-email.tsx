@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
 
@@ -109,9 +109,11 @@ export default function LinkEmailScreen() {
                 <View style={styles.card}>
                     {/* Logo Area */}
                     <View style={styles.logoContainer}>
-                        <View style={styles.logoIcon}>
-                            <Ionicons name="mail" size={20} color="#fff" />
-                        </View>
+                        <Image
+                            source={require("../../assets/images/logo.png")}
+                            style={{ width: 40, height: 40, marginRight: 8 }}
+                            resizeMode="contain"
+                        />
                         <Text style={styles.logoText}>Connect Email</Text>
                     </View>
 

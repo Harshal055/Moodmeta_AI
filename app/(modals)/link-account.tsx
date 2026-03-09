@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import { logger } from "../../utils/logger";
 
@@ -19,30 +21,18 @@ export default function LinkAccountScreen() {
   const insets = useSafeAreaInsets();
   const [isLinking, setIsLinking] = useState(false);
 
+  useEffect(() => {
+    logger.info("SCREEN_VIEW: LinkAccount");
+  }, []);
+
   const handleGoogleLink = async () => {
     setIsLinking(true);
     try {
-      const { error } = await supabase.auth.linkIdentity({
-        provider: "google",
-        options: {
-          redirectTo: "moodmateai://",
-        },
-      });
-
-      if (error) throw error;
-    } catch (error: any) {
-      logger.error("Link error:", error);
-      const message = String(error?.message || "");
-      if (message.toLowerCase().includes("cancel")) {
-        // user cancelled OAuth flow
-      } else if (message.toLowerCase().includes("already")) {
-        Alert.alert("Already Linked", "This account is already linked.");
-      } else {
-        Alert.alert(
-          "Linking Failed",
-          error?.message || "Could not link account.",
-        );
-      }
+      await useAuth.getState().linkGoogle();
+      // After linking, we usually want to land in Chat with the new identity
+      router.replace("/(main)/chat");
+    } catch (error) {
+      // Errors handled inside the store
     } finally {
       setIsLinking(false);
     }
@@ -93,9 +83,11 @@ export default function LinkAccountScreen() {
         <View style={styles.card}>
           {/* Logo Area */}
           <View style={styles.logoContainer}>
-            <View style={styles.logoIcon}>
-              <Ionicons name="cloud-done" size={20} color="#fff" />
-            </View>
+            <Image
+              source={require("../../assets/images/logo.png")}
+              style={{ width: 40, height: 40, marginRight: 8 }}
+              resizeMode="contain"
+            />
             <Text style={styles.logoText}>Save Your Chats</Text>
           </View>
 
@@ -116,7 +108,7 @@ export default function LinkAccountScreen() {
               {/* Apple Button (iOS Only visually prioritised) */}
               {Platform.OS === "ios" && (
                 <TouchableOpacity
-                  onPress={handleAppleLink}
+                  onPress={() => Alert.alert("Coming Soon 🍎", "Apple Login will be available in the next update! We are currently working on the final approval.")}
                   activeOpacity={0.8}
                   style={styles.appleButton}
                 >
@@ -142,7 +134,7 @@ export default function LinkAccountScreen() {
                 style={styles.emailButton}
               >
                 <Ionicons name="mail" size={20} color="#0f172a" style={styles.btnIcon} />
-                <Text style={styles.emailButtonText}>Continue with Email</Text>
+                <Text style={styles.emailButtonText}>Email Sign up / Login</Text>
               </TouchableOpacity>
             </View>
           )}
