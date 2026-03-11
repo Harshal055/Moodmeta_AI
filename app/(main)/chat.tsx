@@ -165,22 +165,7 @@ export default function ChatScreen() {
     return () => clearTimeout(timer);
   }, [errorToast]);
 
-  // Handle app background/foreground transitions
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (nextAppState === "background") {
-        logger.info("Chat: App moved to background. Ensuring sync...");
-        // Future: Could trigger a background sync force here if needed
-      } else if (nextAppState === "active") {
-        logger.info("Chat: App returned to foreground. Refreshing history...");
-        loadHistory();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
+  // Handle app background/foreground transitions — wired after loadHistory is declared below
 
   // ── Load chat history ─────────────────────────────────────────────
   // Ghost user check is already handled in useAuth.initialize(),
@@ -311,9 +296,17 @@ export default function ChatScreen() {
           }
         }
 
-        // --- NEW: Generate first greeting if chat is completely empty ---
+        // --- Generate first greeting if chat is completely empty ---
         if (!loadMore && data.length === 0) {
-          const firstGreeting = `Hey baby, I'm ${companionName}... how are you feeling today? ❤️`;
+          // Role-aware greeting — tailored per companion type
+          const greetingByRole: Record<string, string> = {
+            girlfriend: `Hey baby, I'm ${companionName}... how are you feeling today? 💕`,
+            boyfriend:  `Hey babe, I'm ${companionName}... how's your day going? 💙`,
+            mother:     `Hey sweetheart, I'm ${companionName}. I'm always here for you — how are you feeling? 💜`,
+            father:     `Hey champ, I'm ${companionName}. How are you doing today? 🧡`,
+            friend:     `Hey! I'm ${companionName} — your new companion 😊 How are you feeling today?`,
+          };
+          const firstGreeting = greetingByRole[userRole] || `Hi, I'm ${companionName}! How are you feeling today? ✨`;
           // Use a stable UUID so the optimistic _id matches the DB row id.
           // Without this, realtime echoes the INSERT with a *different* server-generated
           // UUID and dedup fails → duplicate greeting bubble.
@@ -373,6 +366,21 @@ export default function ChatScreen() {
       loadHistory(true);
     }
   };
+
+  // ── AppState: refresh history when app returns to foreground ────────
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "background") {
+        logger.info("Chat: App moved to background.");
+      } else if (nextAppState === "active") {
+        logger.info("Chat: App returned to foreground. Refreshing history...");
+        loadHistory();
+      }
+    });
+    return () => subscription.remove();
+    // loadHistory is stable — it reads from closure refs, not props
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, profile?.id]);
 
   // ── Cache listener ──────────────────────────────────────────────
   // Whenever our messages state changes significantly (e.g., someone sends a message, or we receive one),
@@ -800,10 +808,10 @@ export default function ChatScreen() {
         } else {
           setPlayingMessageId(messageId);
           await speakMessage(text, {
-            rate: 0.9,
-            pitch: 1.1,
+            rate: 0.95,
+            pitch: 1.05,
             language: userLanguage === "Hinglish" ? "hi-IN" : "en-US",
-          });
+          }, userRole);
           setPlayingMessageId(null);
         }
       } catch (error) {
@@ -1082,6 +1090,19 @@ export default function ChatScreen() {
           }}
         >
           <View className="flex-row items-center gap-3">
+            <TouchableOpacity
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace("/(main)/dashboard");
+                }
+              }}
+              style={{ padding: 4, marginRight: -4 }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
+            </TouchableOpacity>
+
             {profile?.avatar_url ? (
               <Image
                 source={{ uri: profile.avatar_url }}

@@ -18,7 +18,7 @@ export default function Index() {
     useCallback(() => {
       if (isInitialized) {
         if (onboarded && currentUser) {
-          router.replace("/(main)/chat");
+          router.replace("/(main)/dashboard");
         } else {
           router.replace("/(auth)/welcome");
         }

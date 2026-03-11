@@ -7,9 +7,87 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// ─── Per-User Rate Limiter (sliding window, in-memory) ───────────────────────
+// Free users: 30 requests / minute
+// Pro users: 60 requests / minute
+const RATE_LIMIT_FREE = 30;
+const RATE_LIMIT_PRO  = 60;
+const WINDOW_MS       = 60_000; // 1 minute
+
+// Map<userId, array of request timestamps within the window>
+const requestLog = new Map<string, number[]>();
+
+function checkRateLimit(userId: string, isPro: boolean): { allowed: boolean; retryAfter: number } {
+  const limit = isPro ? RATE_LIMIT_PRO : RATE_LIMIT_FREE;
+  const now   = Date.now();
+  const windowStart = now - WINDOW_MS;
+
+  // Get timestamps and prune anything outside the window
+  const existing = (requestLog.get(userId) || []).filter(t => t > windowStart);
+
+  if (existing.length >= limit) {
+    // Oldest request in window — tell client when the window clears
+    const oldest = existing[0];
+    const retryAfter = Math.ceil((oldest + WINDOW_MS - now) / 1000);
+    return { allowed: false, retryAfter };
+  }
+
+  existing.push(now);
+  requestLog.set(userId, existing);
+
+  // Evict entries for users who haven't sent a message in 5 minutes (memory hygiene)
+  if (requestLog.size > 10000) {
+    const staleThreshold = now - 5 * WINDOW_MS;
+    for (const [key, times] of requestLog.entries()) {
+      if (Math.max(...times) < staleThreshold) requestLog.delete(key);
+    }
+  }
+
+  return { allowed: true, retryAfter: 0 };
+}
+
+/** Extract userId and subscription tier from the Supabase JWT (no DB call needed). */
+function parseJwt(token: string): { sub: string; app_metadata?: Record<string, any> } | null {
+  try {
+    const payload = token.split(".")[1];
+    const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  // ─── Rate Limit Check ─────────────────────────────────────────────
+  // Parse JWT to get userId and Pro status WITHOUT a DB round-trip
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const jwtPayload = token ? parseJwt(token) : null;
+  const userId = jwtPayload?.sub || req.headers.get("x-forwarded-for") || "anonymous";
+  const isPro = !!(jwtPayload?.app_metadata?.subscribed);
+
+  const { allowed, retryAfter } = checkRateLimit(userId, isPro);
+  if (!allowed) {
+    return new Response(
+      JSON.stringify({
+        error: "Too many requests",
+        details: `You've sent too many messages. Please wait ${retryAfter}s before trying again.`,
+        code: "USER_RATE_LIMIT",
+        retryAfter,
+      }),
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Retry-After": String(retryAfter),
+        },
+      },
+    );
   }
 
   try {

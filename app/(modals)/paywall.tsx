@@ -29,11 +29,10 @@ import {
   retryWithBackoff
 } from "../../utils/purchaseUtils";
 
-// TODO: Replace these with your actual hosted URLs before submitting to stores
 const PRIVACY_POLICY_URL =
-  "https://harshal055.github.io/moodmateai-site/privacy.html";
+  "https://harshal055.github.io/moodmateai-site/";
 const TERMS_OF_SERVICE_URL =
-  "https://harshal055.github.io/moodmateai-site/terms.html";
+  "https://harshal055.github.io/moodmateai-site/";
 
 // Static UI configuration only - all pricing/trials come from RevenueCat
 const PAYWALL_CONFIG = {

@@ -4,11 +4,12 @@ import { Platform } from "react-native";
 import { logger } from "./logger";
 
 /**
- * Re-engagement Notification Service
- * Schedules a local notification to remind the user to check in.
+ * Notification Service
+ * Handles daily companion reminders + challenge + streak nudges.
  */
 export class NotificationService {
     private static CHANNEL_ID = "daily-reminders";
+    private static CHALLENGE_CHANNEL_ID = "challenge-reminders";
 
     static async init() {
         try {
@@ -32,9 +33,14 @@ export class NotificationService {
                     vibrationPattern: [0, 250, 250, 250],
                     lightColor: "#FF6B9D",
                 });
+                await Notifications.setNotificationChannelAsync(this.CHALLENGE_CHANNEL_ID, {
+                    name: "Challenge Reminders",
+                    importance: Notifications.AndroidImportance.HIGH,
+                    vibrationPattern: [0, 500, 250, 500],
+                    lightColor: "#6366F1",
+                });
             }
 
-            // Configure behavior
             Notifications.setNotificationHandler({
                 handleNotification: async () => ({
                     shouldShowAlert: true,
@@ -53,28 +59,32 @@ export class NotificationService {
     }
 
     /**
-     * Schedules a reminder for 24 hours after the last app open.
-     * Resets the timer every time the app is opened.
+     * Schedule a companion check-in reminder for 24h from now.
+     * Replaces any existing companion reminder.
      */
     static async scheduleDailyReminder(companionName: string = "Your Companion") {
         try {
-            // Clear all existing reminders first so we only have one
-            await Notifications.cancelAllScheduledNotificationsAsync();
+            // Cancel only companion reminders (tag-based)
+            const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+            for (const n of scheduled) {
+                if ((n.content.data as any)?.tag === "companion") {
+                    await Notifications.cancelScheduledNotificationAsync(n.identifier);
+                }
+            }
 
             const messages = [
-                "Thinking of you! How has your day been? ✨",
-                "It's been a while. Want to talk for a bit? ❤️",
-                "Your companion is waiting for you. Shall we chat? 😊",
-                "Don't forget to log your mood today! 📊",
+                `Thinking of you! How has your day been? ✨`,
+                `It's been a while. Want to talk for a bit? ❤️`,
+                `${companionName} is waiting for you. Shall we chat? 😊`,
+                `Don't forget to log your mood today! 📊`,
+                `A quick check-in can make all the difference. I'm here. 🌿`,
             ];
-
-            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
 
             await Notifications.scheduleNotificationAsync({
                 content: {
                     title: companionName,
-                    body: randomMessage,
-                    data: { screen: "chat" },
+                    body: messages[Math.floor(Math.random() * messages.length)],
+                    data: { screen: "chat", tag: "companion" },
                     sound: true,
                 },
                 trigger: {
@@ -84,9 +94,75 @@ export class NotificationService {
                 } as any,
             });
 
-            logger.info("Daily reminder scheduled for 24h from now");
+            logger.info("Daily companion reminder scheduled for 24h from now");
         } catch (err) {
             logger.error("scheduleDailyReminder error:", err);
         }
+    }
+
+    /**
+     * Schedule a daily 9am challenge reminder.
+     * Only schedules if one isn't already set for today.
+     */
+    static async scheduleChallengeReminder() {
+        try {
+            const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+            const alreadySet = scheduled.some(n => (n.content.data as any)?.tag === "challenge");
+            if (alreadySet) return;
+
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: "🎯 Daily Challenge Ready!",
+                    body: "Your new challenge is waiting. Complete it to earn Karma points! 💎",
+                    data: { screen: "dashboard", tag: "challenge" },
+                    sound: true,
+                },
+                trigger: {
+                    type: SchedulableTriggerInputTypes.DAILY,
+                    hour: 9,
+                    minute: 0,
+                } as any,
+            });
+
+            logger.info("Daily challenge reminder scheduled for 9am");
+        } catch (err) {
+            logger.error("scheduleChallengeReminder error:", err);
+        }
+    }
+
+    /**
+     * Schedule a streak protection reminder for 8pm.
+     * Reminds the user to take an action before the day ends.
+     */
+    static async scheduleStreakReminder(streak: number) {
+        try {
+            if (streak < 2) return; // only nudge if they have something to protect
+
+            const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+            const alreadySet = scheduled.some(n => (n.content.data as any)?.tag === "streak");
+            if (alreadySet) return;
+
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: `🔥 ${streak}-Day Streak!`,
+                    body: "Don't break your streak today — complete a challenge to keep it alive! 💪",
+                    data: { screen: "dashboard", tag: "streak" },
+                    sound: true,
+                },
+                trigger: {
+                    type: SchedulableTriggerInputTypes.DAILY,
+                    hour: 20,
+                    minute: 0,
+                } as any,
+            });
+
+            logger.info(`Streak reminder scheduled (streak: ${streak})`);
+        } catch (err) {
+            logger.error("scheduleStreakReminder error:", err);
+        }
+    }
+
+    static async cancelAll() {
+        await Notifications.cancelAllScheduledNotificationsAsync();
     }
 }

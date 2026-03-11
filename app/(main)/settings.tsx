@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -17,6 +19,7 @@ import {
 } from "react-native";
 import Purchases from "react-native-purchases";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import BottomNav from "../../components/BottomNav";
 import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import { isFeatureEnabled } from "../../utils/featureFlags";
@@ -26,11 +29,10 @@ import {
   getRecommendedResources
 } from "../../utils/wellnessResources";
 
-// TODO: Replace these with your actual hosted URLs before submitting to stores
 const PRIVACY_POLICY_URL =
-  "https://harshal055.github.io/moodmateai-site/privacy.html";
+  "https://harshal055.github.io/moodmateai-site/";
 const TERMS_OF_SERVICE_URL =
-  "https://harshal055.github.io/moodmateai-site/terms.html";
+  "https://harshal055.github.io/moodmateai-site/";
 
 const COMPANION_AVATARS: Record<string, any> = {
   friend: require("../../assets/images/avatar_friend.png"),
@@ -179,7 +181,16 @@ export default function SettingsScreen() {
           alignItems: "center",
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} className="mr-4">
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(main)/dashboard");
+            }
+          }}
+          className="mr-4"
+        >
           <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
         </TouchableOpacity>
         <Text
@@ -193,7 +204,11 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      <ScrollView className="flex-1 px-5 pt-4">
+      <ScrollView
+        className="flex-1 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Companion Summary Card */}
         {profile && (
           <View
@@ -1194,84 +1209,102 @@ export default function SettingsScreen() {
       </ScrollView>
 
       {/* Custom Feedback Modal */}
-      <Modal visible={showFeedbackModal} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <Text style={{ fontFamily: "Manrope_800ExtraBold", fontSize: 22, color: "#1a1a2e" }}>Send Feedback</Text>
-              <TouchableOpacity onPress={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}>
-                <Ionicons name="close-circle" size={32} color="#ccc" />
-              </TouchableOpacity>
-            </View>
+      <Modal visible={showFeedbackModal} transparent animationType="slide" onRequestClose={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={0}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}
+            onPress={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}
+          >
+            <TouchableOpacity activeOpacity={1}>
+              <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40 }}>
+                {/* Handle bar */}
+                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#E9ECEF", alignSelf: "center", marginBottom: 20 }} />
 
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#666", marginBottom: 16 }}>
-              How can we improve MoodMateAI? Your thoughts help us make the app better for everyone.
-            </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={{ fontFamily: "Manrope_800ExtraBold", fontSize: 22, color: "#1a1a2e" }}>Send Feedback</Text>
+                  <TouchableOpacity onPress={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}>
+                    <Ionicons name="close-circle" size={32} color="#ccc" />
+                  </TouchableOpacity>
+                </View>
 
-            <TextInput
-              multiline
-              placeholder="Tell us what's on your mind..."
-              value={feedbackMessage}
-              onChangeText={setFeedbackMessage}
-              placeholderTextColor="#999"
-              style={{
-                backgroundColor: "#F8F9FA",
-                borderRadius: 16,
-                padding: 16,
-                height: 150,
-                textAlignVertical: "top",
-                fontFamily: "Inter_400Regular",
-                fontSize: 16,
-                color: "#1a1a2e",
-                borderWidth: 1,
-                borderColor: "#E9ECEF",
-                marginBottom: 24,
-              }}
-            />
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#666", marginBottom: 16, lineHeight: 20 }}>
+                  How can we improve MoodMateAI? Your thoughts help us make the app better for everyone.
+                </Text>
 
-            <TouchableOpacity
-              disabled={!feedbackMessage.trim() || isSendingFeedback}
-              style={{
-                backgroundColor: feedbackMessage.trim() ? "#FF6B9D" : "#FFC2D6",
-                borderRadius: 16,
-                paddingVertical: 18,
-                alignItems: "center",
-                flexDirection: "row",
-                justifyContent: "center",
-                opacity: isSendingFeedback ? 0.7 : 1,
-              }}
-              onPress={async () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setIsSendingFeedback(true);
-                try {
-                  const { error } = await supabase.from("feedback" as any).insert({
-                    user_id: user?.id,
-                    message: feedbackMessage.trim(),
-                    rating: 5,
-                  });
-                  if (error) throw error;
-                  Alert.alert("Success! 🎉", "Thank you for your feedback. We'll look into it!");
-                  setShowFeedbackModal(false);
-                  setFeedbackMessage("");
-                } catch (e) {
-                  logger.error("Feedback error:", e);
-                  Alert.alert("Error", "Could not send feedback. Please try again later.");
-                } finally {
-                  setIsSendingFeedback(false);
-                }
-              }}
-            >
-              {isSendingFeedback ? (
-                <ActivityIndicator color="white" style={{ marginRight: 8 }} />
-              ) : (
-                <Ionicons name="send" size={18} color="white" style={{ marginRight: 8 }} />
-              )}
-              <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 16, color: "white" }}>
-                {isSendingFeedback ? "Sending..." : "Submit Feedback"}
-              </Text>
+                <TextInput
+                  multiline
+                  scrollEnabled
+                  placeholder="Tell us what's on your mind..."
+                  value={feedbackMessage}
+                  onChangeText={setFeedbackMessage}
+                  placeholderTextColor="#999"
+                  autoFocus
+                  style={{
+                    backgroundColor: "#F8F9FA",
+                    borderRadius: 16,
+                    padding: 16,
+                    minHeight: 120,
+                    maxHeight: 220,
+                    textAlignVertical: "top",
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 16,
+                    color: "#1a1a2e",
+                    borderWidth: 1,
+                    borderColor: feedbackMessage.length > 0 ? "#FF6B9D" : "#E9ECEF",
+                    marginBottom: 20,
+                  }}
+                />
+
+                <TouchableOpacity
+                  disabled={!feedbackMessage.trim() || isSendingFeedback}
+                  style={{
+                    backgroundColor: feedbackMessage.trim() ? "#FF6B9D" : "#FFC2D6",
+                    borderRadius: 16,
+                    paddingVertical: 18,
+                    alignItems: "center",
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    opacity: isSendingFeedback ? 0.7 : 1,
+                  }}
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setIsSendingFeedback(true);
+                    try {
+                      const { error } = await supabase.from("feedback" as any).insert({
+                        user_id: user?.id,
+                        message: feedbackMessage.trim(),
+                        rating: 5,
+                      });
+                      if (error) throw error;
+                      Alert.alert("Success! 🎉", "Thank you for your feedback. We'll look into it!");
+                      setShowFeedbackModal(false);
+                      setFeedbackMessage("");
+                    } catch (e) {
+                      logger.error("Feedback error:", e);
+                      Alert.alert("Error", "Could not send feedback. Please try again later.");
+                    } finally {
+                      setIsSendingFeedback(false);
+                    }
+                  }}
+                >
+                  {isSendingFeedback ? (
+                    <ActivityIndicator color="white" style={{ marginRight: 8 }} />
+                  ) : (
+                    <Ionicons name="send" size={18} color="white" style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 16, color: "white" }}>
+                    {isSendingFeedback ? "Sending..." : "Submit Feedback"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Custom Logout Modal */}
@@ -1350,6 +1383,7 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal >
+      <BottomNav />
     </View >
   );
 }

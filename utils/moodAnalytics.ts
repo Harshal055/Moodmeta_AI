@@ -36,8 +36,8 @@ export const getMoodAnalytics = async (
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const { data: moods, error } = await supabase
-      .from("profiles")
-      .select("id, mood, created_at")
+      .from("mood_logs")
+      .select("mood_score, notes, created_at")
       .eq("user_id", userId)
       .gte("created_at", thirtyDaysAgo.toISOString())
       .order("created_at", { ascending: false });
@@ -53,11 +53,19 @@ export const getMoodAnalytics = async (
     }
 
     // Process mood data
-    const moodEntries: MoodEntry[] = moods.map((m: any) => ({
-      date: new Date(m.created_at).toISOString().split("T")[0],
-      mood: m.mood || "neutral",
-      intensity: 5, // Default, would come from database if tracked
-    }));
+    const moodEntries: MoodEntry[] = moods.map((m: any) => {
+      // Try to extract mood name from notes (format: "Mood: [name]")
+      let moodName = "neutral";
+      if (m.notes && m.notes.startsWith("Mood: ")) {
+        moodName = m.notes.replace("Mood: ", "");
+      }
+
+      return {
+        date: new Date(m.created_at).toISOString().split("T")[0],
+        mood: moodName,
+        intensity: m.mood_score || 5,
+      };
+    });
 
     // Calculate insights
     const mostCommonMood = getMostCommonMood(moodEntries);

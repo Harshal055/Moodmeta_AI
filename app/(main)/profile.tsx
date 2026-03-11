@@ -33,7 +33,7 @@ export default function ProfileScreen() {
         const stats = await getMoodAnalytics(user.id);
         setMoodAnalytics(stats);
       } catch (e) {
-        console.error("Profile: Error loading mood stats", e);
+        logger.error("Profile: Error loading mood stats", e);
       } finally {
         setLoadingAnalytics(false);
       }
@@ -57,11 +57,12 @@ export default function ProfileScreen() {
   };
 
   const menuItems = [
-    {
+    // Only show Upgrade button for free users
+    ...(!isPremium ? [{
       icon: "👑",
       label: "Upgrade to Premium",
       action: () => router.push("/(modals)/paywall"),
-    },
+    }] : []),
     ...(user?.is_anonymous ? [{
       icon: "🔗",
       label: "Save My Chats Forever",
