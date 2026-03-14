@@ -14,7 +14,7 @@
             },
             "oauth_client": [
                 {
-                    "client_id": "697681572577-er1mlcjal74slqjp6sfdtgaqvfnm85dg.apps.googleusercontent.com",
+                    "client_id": "697681572577-b2b98g1baose3c3ph1v6v5lrdpdpif21.apps.googleusercontent.com",
                     "client_type": 1,
                     "android_info": {
                         "package_name": "com.harshal.moodmateai",
@@ -22,7 +22,7 @@
                     }
                 },
                 {
-                    "client_id": "697681572577-r6p69g1t3g65689psclf089aed4g3nc0.apps.googleusercontent.com",
+                    "client_id": "697681572577-adqvpgpfdis82poosk8ssia7hjttjng6.apps.googleusercontent.com",
                     "client_type": 3
                 }
             ],
@@ -35,8 +35,15 @@
                 "appinvite_service": {
                     "other_platform_oauth_client": [
                         {
-                            "client_id": "697681572577-r6p69g1t3g65689psclf089aed4g3nc0.apps.googleusercontent.com",
+                            "client_id": "697681572577-adqvpgpfdis82poosk8ssia7hjttjng6.apps.googleusercontent.com",
                             "client_type": 3
+                        },
+                        {
+                            "client_id": "697681572577-6s46k0hbgvjaql2npoe6ki77qri49uu8.apps.googleusercontent.com",
+                            "client_type": 2,
+                            "ios_info": {
+                                "bundle_id": "com.harshal.moodmateai"
+                            }
                         }
                     ]
                 }

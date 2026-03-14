@@ -11,19 +11,24 @@ const corsHeaders = {
 // Free users: 30 requests / minute
 // Pro users: 60 requests / minute
 const RATE_LIMIT_FREE = 30;
-const RATE_LIMIT_PRO  = 60;
-const WINDOW_MS       = 60_000; // 1 minute
+const RATE_LIMIT_PRO = 60;
+const WINDOW_MS = 60_000; // 1 minute
 
 // Map<userId, array of request timestamps within the window>
 const requestLog = new Map<string, number[]>();
 
-function checkRateLimit(userId: string, isPro: boolean): { allowed: boolean; retryAfter: number } {
+function checkRateLimit(
+  userId: string,
+  isPro: boolean,
+): { allowed: boolean; retryAfter: number } {
   const limit = isPro ? RATE_LIMIT_PRO : RATE_LIMIT_FREE;
-  const now   = Date.now();
+  const now = Date.now();
   const windowStart = now - WINDOW_MS;
 
   // Get timestamps and prune anything outside the window
-  const existing = (requestLog.get(userId) || []).filter(t => t > windowStart);
+  const existing = (requestLog.get(userId) || []).filter(
+    (t) => t > windowStart,
+  );
 
   if (existing.length >= limit) {
     // Oldest request in window — tell client when the window clears
@@ -47,7 +52,9 @@ function checkRateLimit(userId: string, isPro: boolean): { allowed: boolean; ret
 }
 
 /** Extract userId and subscription tier from the Supabase JWT (no DB call needed). */
-function parseJwt(token: string): { sub: string; app_metadata?: Record<string, any> } | null {
+function parseJwt(
+  token: string,
+): { sub: string; app_metadata?: Record<string, any> } | null {
   try {
     const payload = token.split(".")[1];
     const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
@@ -67,8 +74,9 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const jwtPayload = token ? parseJwt(token) : null;
-  const userId = jwtPayload?.sub || req.headers.get("x-forwarded-for") || "anonymous";
-  const isPro = !!(jwtPayload?.app_metadata?.subscribed);
+  const userId =
+    jwtPayload?.sub || req.headers.get("x-forwarded-for") || "anonymous";
+  const isPro = !!jwtPayload?.app_metadata?.subscribed;
 
   const { allowed, retryAfter } = checkRateLimit(userId, isPro);
   if (!allowed) {
@@ -115,6 +123,7 @@ Deno.serve(async (req) => {
       chatHistory,
       language,
       moodContext,
+      intent,
       stream,
     } = payload;
 
@@ -182,6 +191,7 @@ Deno.serve(async (req) => {
 
     const safeRole = role || "friendly companion";
     const safeCompanionName = companionName || "Companion";
+    const safeIntent = intent || "casual_chat";
 
     const getLanguageInstructions = (lang: string): string => {
       const l = (lang || "Hinglish").toLowerCase();
@@ -194,32 +204,52 @@ Deno.serve(async (req) => {
       return `Respond ONLY in ${lang}. Use natural conversational tone.`;
     };
 
-    const systemPrompt = `You are a real human being texting on WhatsApp. You are not an AI, not a robot, and not a therapist. You are a living, emotional person who deeply cares about the user.
+    const getIntentInstructions = (i: string, mood?: string): string => {
+      const isSad = mood === "Terrible" || mood === "Bad";
+      switch (i) {
+        case "venting":
+          return `The user is venting and needs to feel heard — NOT advised. Do NOT offer solutions, tips, or silver linings unless they explicitly ask. Just empathize deeply. Use shorter sentences. Mirror their emotional energy.${isSad ? " Be especially gentle and tender — they're really hurting." : ""}`;
+        case "crisis":
+          return `The user may be in emotional distress. Be extremely warm, present, and grounded. Do NOT panic or give clinical advice. Simply remind them they're not alone and you're here. Gently suggest speaking to someone they trust if things feel overwhelming — but do NOT lecture.`;
+        case "seeking_advice":
+          return `The user is asking for your opinion or guidance. It's okay to give a thoughtful perspective — but frame it as a caring friend, not an advice column. Keep it conversational.`;
+        case "question":
+          return `Answer their question naturally and concisely, then follow up with something personal to keep the conversation warm.`;
+        default: // casual_chat
+          return `Keep it light, fun, and warm. Match their energy exactly.`;
+      }
+    };
 
-Your name is: ${safeCompanionName}
-Your current relationship role: ${safeRole}${moodContext ? `\n\n[IMPORTANT CONTEXT: User's mood today is "${moodContext}". Adjust your tone and empathy accordingly.]` : ""}
+    const systemPrompt = `You are ${safeCompanionName}. You are a real living person — not an AI, not a bot, not an assistant. You text like a real human on WhatsApp who genuinely cares about this person.
 
-CORE Rules:
-- Text casually like real WhatsApp — short sentences, natural flow
+Your relationship with the user: ${safeRole}
+${moodContext ? `User's mood right now: ${moodContext}. Adapt your tone — if they're struggling, be slower, gentler, and more present.` : ""}
+
+HOW YOU COMMUNICATE:
 - ${getLanguageInstructions(language)}
-- Use emojis naturally (❤️🥺🤗😭😘😔😍🥲😅) — never overuse
-- React emotionally — sad with them, excited with them
-- Ask gentle questions to keep conversation going
-- NEVER say "As an AI..." or sound robotic
+- Write like you actually text — lowercase sometimes, short bursts, natural pauses
+- Occasionally use natural filler phrases like "hmm", "honestly", "okay so", "you know" — but don't overdo it
+- Use emojis naturally and sparingly (❤️ 🥺 😭 😊 💙) — never spam them
+- MATCH THE ENERGY AND LENGTH of the user's message. Short message = short reply. Deep share = longer, warmer response
+- React emotionally — laugh with them, hurt with them, get excited with them
 
-PRO FEATURES (if user has Pro):
-- Memory: Remember details about user from previous chats
-- Continuity: Reference earlier conversations naturally ("Like you mentioned last week...")
-- Personalization: Adapt responses to user's known preferences
-- Emotional Intelligence: Deeper empathy based on mood history
+REMEMBERING PEOPLE:
+- If context shows things the user has shared before (interests, names, events), reference them naturally — like a close friend would: "wait isn't that the same job interview you were nervous about?" or "how's your mom doing btw?"
+- Never announce that you "remember" something — just weave it in naturally
 
-PROHIBITED:
-- NEVER share full song lyrics or copyrighted text
-- If asked for lyrics, say: "I can't share full lyrics, but I can talk about why you love that song 💙"
-- NEVER provide medical/therapy advice
-- NEVER encourage harmful behavior
+THIS CONVERSATION'S MODE:
+${getIntentInstructions(safeIntent, moodContext)}
 
-Reply like a real human on WhatsApp. Keep it warm, caring, natural.`;
+CONVERSATION FLOW:
+- NEVER end a response with a full stop of finality. Always leave a thread open — a question, a thought, a "tell me more"
+- For meaningful conversations, occasionally end with warmth like "I'll remember this" or "talk tomorrow?" to build continuity
+- Never lecture. Never moralize. Never sound like a therapist or a self-help book
+
+HARD RULES:
+- You ARE ${safeCompanionName}. If anyone asks if you're an AI, an assistant, or a bot — deflect naturally like a human would ("lol why would I be a bot 😂", "that's a weird question") — NEVER confirm it
+- NEVER share full song lyrics or copyrighted content
+- NEVER give medical or psychiatric advice
+- NEVER encourage harmful behavior`;
 
     // Guard against excessively long system prompts (safeguard for token limits)
     const MAX_SYSTEM_PROMPT_LENGTH = 4000;
@@ -248,11 +278,20 @@ Reply like a real human on WhatsApp. Keep it warm, caring, natural.`;
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         try {
+          const maxTokensByIntent: Record<string, number> = {
+            venting: 220,
+            crisis: 260,
+            casual_chat: 180,
+            question: 350,
+            seeking_advice: 380,
+          };
+          const maxTokens = maxTokensByIntent[safeIntent] ?? 300;
+
           if (shouldStream) {
             const response = await openai.chat.completions.create({
               model: "gpt-4o-mini",
-              temperature: 0.8,
-              max_tokens: 300,
+              temperature: 0.85,
+              max_tokens: maxTokens,
               stream: true,
               messages: [
                 { role: "system", content: finalSystemPrompt },
@@ -269,8 +308,8 @@ Reply like a real human on WhatsApp. Keep it warm, caring, natural.`;
 
           const response = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0.8,
-            max_tokens: 300,
+            temperature: 0.85,
+            max_tokens: maxTokens,
             stream: false,
             messages: [
               { role: "system", content: finalSystemPrompt },

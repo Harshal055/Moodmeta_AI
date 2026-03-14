@@ -10,14 +10,17 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+import {
+    GoogleSignin,
+    statusCodes,
+} from "@react-native-google-signin/google-signin";
 import type { Session, User } from "@supabase/supabase-js";
 import { Alert } from "react-native";
 import { create } from "zustand";
 import {
-  ExpoSecureStoreAdapter,
-  supabase,
-  SUPABASE_STORAGE_KEY,
+    ExpoSecureStoreAdapter,
+    supabase,
+    SUPABASE_STORAGE_KEY,
 } from "../lib/supabase";
 import { revenueCatService } from "../services/revenueCatService";
 import { logger } from "../utils/logger";
@@ -57,7 +60,7 @@ interface AuthState {
 
   // Actions
   initialize: () => Promise<void>;
-  ensureProfile: (userId: string) => Promise<void>;
+  ensureProfile: (userId: string, forceRefresh?: boolean) => Promise<void>;
   updateProfile: (
     data: Partial<
       Pick<
@@ -76,7 +79,11 @@ interface AuthState {
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   linkGoogle: () => Promise<void>;
-  transferAnonymousData: (oldUserId: string, newUserId: string) => Promise<void>;
+  transferAnonymousData: (
+    oldUserId: string,
+    newUserId: string,
+  ) => Promise<void>;
+  syncPremiumStatus: (isPremiumManual?: boolean) => Promise<void>;
 }
 
 let ensureProfilePromise: Promise<void> | null = null;
@@ -114,13 +121,24 @@ export const useAuth = create<AuthState>((set, get) => ({
     // 0. Initial Google Configuration
     try {
       const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-      logger.info("Auth: Configuring Google Sign-In with Web Client ID:", webClientId ? `${webClientId.substring(0, 10)}...` : "UNDEFINED");
+      const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+
+      if (!webClientId) {
+        logger.warn(
+          "Auth: EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is missing. Google Sign-In will fail.",
+        );
+      }
 
       GoogleSignin.configure({
-        webClientId: webClientId,
-        offlineAccess: true,
+        webClientId,
+        // Supabase only needs an ID token; offline server auth code is unnecessary.
+        offlineAccess: false,
+        scopes: ["profile", "email"],
       });
-      logger.info("Auth: Google Sign-In configured successfully");
+      logger.info("Auth: Google Sign-In configured successfully", {
+        hasWebClientId: Boolean(webClientId),
+        hasAndroidClientId: Boolean(androidClientId),
+      });
     } catch (e) {
       logger.error("Auth: Google Sign-In config failed:", e);
     }
@@ -142,12 +160,17 @@ export const useAuth = create<AuthState>((set, get) => ({
           } = await supabase.auth.getSession();
           initialSession = session;
           activeUser = session?.user ?? null;
-          logger.info("Session fetched:", activeUser ? "User found" : "No user");
+          logger.info(
+            "Session fetched:",
+            activeUser ? "User found" : "No user",
+          );
         } catch (sessionError: any) {
           // Handle corrupted session data
           logger.error("Session fetch error:", sessionError);
           if (sessionError?.message?.includes("JSON Parse")) {
-            logger.warn("Corrupted session detected, clearing all auth data...");
+            logger.warn(
+              "Corrupted session detected, clearing all auth data...",
+            );
             await ExpoSecureStoreAdapter.removeItem(SUPABASE_STORAGE_KEY);
             activeUser = null;
           } else {
@@ -184,9 +207,14 @@ export const useAuth = create<AuthState>((set, get) => ({
             const { data, error } = await supabase.auth.signInAnonymously();
             if (error) {
               retryCount++;
-              logger.error(`Anonymous sign-in error (Attempt ${retryCount}):`, error);
+              logger.error(
+                `Anonymous sign-in error (Attempt ${retryCount}):`,
+                error,
+              );
               if (retryCount >= maxRetries) throw error;
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              await new Promise((resolve) =>
+                setTimeout(resolve, 1000 * retryCount),
+              );
             } else {
               activeUser = data.session?.user ?? null;
               signInSuccess = true;
@@ -209,23 +237,31 @@ export const useAuth = create<AuthState>((set, get) => ({
             .then((token) => {
               if (token) return get().updateAuthPushToken(token);
             })
-            .catch(() => { });
+            .catch(() => {});
         }
 
         // 4. Setup Global Listener
         if (authSubscription) authSubscription.unsubscribe();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange(async (event, session) => {
           const newUser = session?.user ?? null;
           const oldUser = get().currentUser;
 
           if (event === "SIGNED_OUT") {
             set({
-              currentUser: null, session: null, profile: null, onboarded: false,
-              role: null, avatar_url: null, push_token: null, isPremium: false,
+              currentUser: null,
+              session: null,
+              profile: null,
+              onboarded: false,
+              role: null,
+              avatar_url: null,
+              push_token: null,
+              isPremium: false,
               isAdmin: false,
             });
             // Also sign out from RevenueCat to be clean
-            revenueCatService.logout().catch(() => { });
+            revenueCatService.logout().catch(() => {});
 
             // Cleanup profile subscription on sign-out
             if (profileSubscription) {
@@ -239,7 +275,9 @@ export const useAuth = create<AuthState>((set, get) => ({
               if (oldUser.is_anonymous && !newUser.is_anonymous) {
                 if (!isMigrating) {
                   isMigrating = true;
-                  logger.info(`Auth: Detected Migration. ${oldUser.id} -> ${newUser.id}`);
+                  logger.info(
+                    `Auth: Detected Migration. ${oldUser.id} -> ${newUser.id}`,
+                  );
                   await get().transferAnonymousData(oldUser.id, newUser.id);
                   isMigrating = false;
                 }
@@ -247,7 +285,9 @@ export const useAuth = create<AuthState>((set, get) => ({
 
               // B7: Sync RevenueCat ID immediately on any UID change
               logger.info(`Auth: Syncing RevenueCat to new UID: ${newUser.id}`);
-              revenueCatService.login(newUser.id).catch(e => logger.error("RC Sync Error:", e));
+              revenueCatService
+                .login(newUser.id)
+                .catch((e) => logger.error("RC Sync Error:", e));
             }
 
             set({ currentUser: newUser, session });
@@ -255,7 +295,6 @@ export const useAuth = create<AuthState>((set, get) => ({
           }
         });
         authSubscription = subscription;
-
 
         set({ isLoading: false, isInitialized: true });
         logger.info("Auth initialization complete");
@@ -266,7 +305,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         Alert.alert(
           "Connection Error 📡",
           "There was a problem starting the app. Please check your internet and try again.",
-          [{ text: "Retry", onPress: () => get().initialize() }]
+          [{ text: "Retry", onPress: () => get().initialize() }],
         );
       }
     })();
@@ -283,7 +322,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         Alert.alert(
           "Connection Timeout",
           "The server is taking too long to respond. Please try again.",
-          [{ text: "Retry", onPress: () => get().initialize() }]
+          [{ text: "Retry", onPress: () => get().initialize() }],
         );
       }
     });
@@ -293,8 +332,12 @@ export const useAuth = create<AuthState>((set, get) => ({
    * Check if a profiles row exists for this user.
    * Reverted from upsert to fetch-then-insert to avoid requiring a unique constraint on user_id.
    */
-  ensureProfile: async (userId: string) => {
-    if (ensureProfilePromise && currentEnsuringUserId === userId) {
+  ensureProfile: async (userId: string, forceRefresh = false) => {
+    if (
+      !forceRefresh &&
+      ensureProfilePromise &&
+      currentEnsuringUserId === userId
+    ) {
       return ensureProfilePromise;
     }
 
@@ -318,23 +361,32 @@ export const useAuth = create<AuthState>((set, get) => ({
 
         // 2. Race condition handling: If no profile, try to create it or wait for trigger
         if (!prof) {
-          logger.info("ensureProfile: Profile not found, attempting safe create...");
+          logger.info(
+            "ensureProfile: Profile not found, attempting safe create...",
+          );
           // B11: Sync avatar from social provider metadata if available
           const user = get().currentUser;
-          const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
+          const avatarUrl =
+            user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
           const { data: newProf, error: insertError } = await supabase
             .from("profiles")
-            .upsert({
-              user_id: userId,
-              onboarded: false,
-              avatar_url: avatarUrl || null
-            }, { onConflict: "user_id" })
+            .upsert(
+              {
+                user_id: userId,
+                onboarded: false,
+                avatar_url: avatarUrl || null,
+              },
+              { onConflict: "user_id" },
+            )
             .select()
             .maybeSingle();
 
           if (insertError) {
-            logger.warn("ensureProfile: Insert/Upsert conflict (expected if trigger won):", insertError.message);
+            logger.warn(
+              "ensureProfile: Insert/Upsert conflict (expected if trigger won):",
+              insertError.message,
+            );
             // Re-fetch in case a trigger created it simultaneously
             prof = await fetchProfile();
           } else {
@@ -344,14 +396,32 @@ export const useAuth = create<AuthState>((set, get) => ({
 
         if (!prof) {
           // Final fallback: Wait a moment for trigger
-          await new Promise(r => setTimeout(r, 800));
+          await new Promise((r) => setTimeout(r, 800));
           prof = await fetchProfile();
         }
 
         if (prof) {
           const user = get().currentUser;
-          const customerInfo = await revenueCatService.login(userId);
-          const isRcPremium = revenueCatService.checkEntitlement(customerInfo);
+
+          // Background RC login to avoid blocking UI during sensitive auth transitions
+          revenueCatService
+            .login(userId)
+            .then((customerInfo) => {
+              const isRcPremium =
+                revenueCatService.checkEntitlement(customerInfo);
+              if (isRcPremium !== get().isPremium) {
+                set({ isPremium: isRcPremium });
+                // Also sync back to DB if they disagree
+                if (isRcPremium !== prof?.is_premium) {
+                  get()
+                    .syncPremiumStatus(isRcPremium)
+                    .catch(() => {});
+                }
+              }
+            })
+            .catch((e) =>
+              logger.error("ensureProfile: RC Login failed (non-blocking)", e),
+            );
 
           // B4: Robust Admin check (Role-based with Email fallback)
           const isAdmin =
@@ -367,7 +437,8 @@ export const useAuth = create<AuthState>((set, get) => ({
             language: prof.language,
             avatar_url: prof.avatar_url,
             push_token: prof.push_token,
-            isPremium: isRcPremium || (prof.is_premium as boolean) === true,
+            // Use DB value immediately, RC will update asynchronously if needed
+            isPremium: (prof.is_premium as boolean) === true,
             isAdmin,
           });
 
@@ -390,9 +461,23 @@ export const useAuth = create<AuthState>((set, get) => ({
                 logger.info("Realtime: Profile updated", payload.eventType);
                 const updatedProf = payload.new as Profile;
                 if (updatedProf) {
+                  // Only update state if something actually changed.
+                  // This prevents recursive re-renders from Realtime pulses.
+                  const currentProf = get().profile;
+                  const hasChanges =
+                    !currentProf ||
+                    currentProf.is_premium !== updatedProf.is_premium ||
+                    currentProf.role !== updatedProf.role ||
+                    currentProf.onboarded !== updatedProf.onboarded ||
+                    currentProf.companion_name !== updatedProf.companion_name ||
+                    currentProf.avatar_url !== updatedProf.avatar_url;
+
+                  if (!hasChanges) return;
+
                   const updatedIsAdmin =
                     updatedProf.role === "admin" ||
-                    updatedProf.user_id === "af2c2707-6887-4638-89f4-34509747514b" ||
+                    updatedProf.user_id ===
+                      "af2c2707-6887-4638-89f4-34509747514b" ||
                     user?.email === "harsh@moodmateai.com";
 
                   set({
@@ -403,11 +488,14 @@ export const useAuth = create<AuthState>((set, get) => ({
                     language: updatedProf.language,
                     avatar_url: updatedProf.avatar_url,
                     push_token: updatedProf.push_token,
-                    isPremium: isRcPremium || updatedProf.is_premium === true,
+                    // Use CURRENT isPremium state OR the new database value.
+                    // This prevents stale closure variables from overriding a newer RC state.
+                    isPremium:
+                      get().isPremium || updatedProf.is_premium === true,
                     isAdmin: updatedIsAdmin,
                   });
                 }
-              }
+              },
             )
             .subscribe();
 
@@ -592,7 +680,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       logger.info("Auth: Google Sign-In success", data.user?.email);
       // Wait for profile to be ready so component navigation sees correct onboarded status
       if (data.user) {
-        await get().ensureProfile(data.user.id);
+        await get().ensureProfile(data.user.id, true);
       }
     } catch (error: any) {
       // B3: Handle Cancellation specifically
@@ -601,8 +689,33 @@ export const useAuth = create<AuthState>((set, get) => ({
       } else if (error.code === statusCodes.IN_PROGRESS) {
         logger.warn("Auth: Google Sign-In already in progress");
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert("Google Play Services", "Please ensure Google Play Services are available on your device.");
+        Alert.alert(
+          "Google Play Services",
+          "Please ensure Google Play Services are available on your device.",
+        );
+      } else if (
+        String(error?.message || "").includes("DEVELOPER_ERROR") ||
+        error?.code === 10
+      ) {
+        logger.error(
+          "Auth: Google Sign-In DEVELOPER_ERROR. Verify Firebase OAuth setup (package name, SHA-1, web client ID).",
+          {
+            packageName: "com.harshal.moodmateai",
+            webClientIdPresent: Boolean(
+              process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+            ),
+            errorCode: error?.code,
+          },
+        );
+        Alert.alert(
+          "Google Sign-In Config Error",
+          "Google OAuth is misconfigured. Verify Firebase package name, SHA-1 fingerprints, and Web Client ID in .env.local.",
+        );
       } else {
+        logger.error(
+          `Auth: Google Sign-In failed with unexpected error: ${error.message || error}`,
+          error,
+        );
         throw error;
       }
     } finally {
@@ -635,34 +748,51 @@ export const useAuth = create<AuthState>((set, get) => ({
       // 3. Link with Supabase using signInWithIdToken
       // B5/B6: This replaces linkIdentity and is much more robust for native mobile.
       // It handles account merging and triggers onAuthStateChange migration.
-      const { data: linkData, error: linkError } = await supabase.auth.signInWithIdToken({
-        provider: "google",
-        token: idToken,
-      });
+      const { data: linkData, error: linkError } =
+        await supabase.auth.signInWithIdToken({
+          provider: "google",
+          token: idToken,
+        });
 
       if (linkError) {
         // Handle common linking errors
-        if (linkError.message.includes("already linked") || linkError.message.includes("already registered")) {
-          throw new Error("This Google account is already linked to another user.");
+        if (
+          linkError.message.includes("already linked") ||
+          linkError.message.includes("already registered")
+        ) {
+          throw new Error(
+            "This Google account is already linked to another user.",
+          );
         }
         throw linkError;
       }
 
       // 4. Force state refresh to update is_anonymous: false
-      const { data: { user: updatedUser } } = await supabase.auth.getUser();
+      const {
+        data: { user: updatedUser },
+      } = await supabase.auth.getUser();
       if (updatedUser) {
         set({ currentUser: updatedUser });
-        logger.info("Auth: User state refreshed after linking", { isAnonymous: updatedUser.is_anonymous });
-        // Wait for profile refresh after migration
-        await get().ensureProfile(updatedUser.id);
+        logger.info("Auth: User state refreshed after linking", {
+          isAnonymous: updatedUser.is_anonymous,
+        });
+        // FORCE REFRESH profile to catch the results of transferAnonymousData
+        await get().ensureProfile(updatedUser.id, true);
       }
 
       logger.info("Auth: Native Google Linking success");
-      Alert.alert("Success 🎉", "Your account is now securely linked to Google!");
+      Alert.alert(
+        "Success 🎉",
+        "Your account is now securely linked to Google!",
+      );
     } catch (error: any) {
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
         logger.info("Auth: Google Link cancelled");
       } else {
+        logger.error(
+          `Auth: Google Linking failed with unexpected error: ${error.message || error}`,
+          error,
+        );
         throw error;
       }
     } finally {
@@ -683,21 +813,27 @@ export const useAuth = create<AuthState>((set, get) => ({
         .from("chats")
         .update({ user_id: newUserId })
         .eq("user_id", oldUserId);
-      if (chatError) logger.error("Migration: Chat move failed:", chatError.message);
+      if (chatError)
+        logger.error("Migration: Chat move failed:", chatError.message);
 
       // 2. Migrate Mood Logs
       const { error: logError } = await supabase
         .from("mood_logs")
         .update({ user_id: newUserId })
         .eq("user_id", oldUserId);
-      if (logError) logger.error("Migration: Mood logs move failed:", logError.message);
+      if (logError)
+        logger.error("Migration: Mood logs move failed:", logError.message);
 
       // 3. Migrate AI Memory (if exists)
       const { error: memoryError } = await supabase
         .from("user_memories" as any)
         .update({ user_id: newUserId })
         .eq("user_id", oldUserId);
-      if (memoryError) logger.warn("Migration: AI Memory move failed (might not exist):", memoryError.message);
+      if (memoryError)
+        logger.warn(
+          "Migration: AI Memory move failed (might not exist):",
+          memoryError.message,
+        );
 
       // 4. Migrate Profile Fields (Companion, Role, etc.)
       const oldProfile = get().profile;
@@ -717,16 +853,61 @@ export const useAuth = create<AuthState>((set, get) => ({
           .eq("user_id", newUserId);
 
         if (profileError) {
-          logger.error("Migration: Profile merge failed:", profileError.message);
+          logger.error(
+            "Migration: Profile merge failed:",
+            profileError.message,
+          );
         } else {
-          // Force a local profile refresh
-          await get().ensureProfile(newUserId);
+          // Force a local profile refresh with fresh data from DB
+          await get().ensureProfile(newUserId, true);
         }
       }
 
       logger.info("MIGRATION: Completed successfully");
     } catch (err) {
       logger.error("MIGRATION: Fatal error:", err);
+    }
+  },
+
+  /**
+   * Pushes the latest premium status to the database.
+   * Call this after a successful purchase or when the RC listener fires.
+   */
+  syncPremiumStatus: async (isPremiumManual?: boolean) => {
+    const user = get().currentUser;
+    const profile = get().profile;
+    if (!user) return;
+
+    try {
+      // 1. Determine current pro status
+      let isPro = isPremiumManual;
+      if (isPro === undefined) {
+        const info = await revenueCatService.getCustomerInfo();
+        isPro = revenueCatService.checkEntitlement(info);
+      }
+
+      // 2. GUARD: Don't update if DB already matches
+      if (profile && profile.is_premium === isPro) {
+        logger.info("Auth: Premium Status already matches DB, skipping sync.");
+        set({ isPremium: isPro });
+        return;
+      }
+
+      logger.info(`Auth: Syncing Premium Status to DB: ${isPro}`);
+
+      // 3. Optimistic update
+      set({ isPremium: isPro });
+
+      // 4. Persist to DB
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_premium: isPro })
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      logger.info("Auth: Premium Status synced successfully");
+    } catch (e) {
+      logger.error("Auth: Premium Sync Error:", e);
     }
   },
 }));

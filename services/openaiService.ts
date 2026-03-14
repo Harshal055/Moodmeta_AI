@@ -79,6 +79,7 @@ async function fetchNonStreamResponse(
     language: string;
     moodContext: string | undefined;
     userId: string | undefined;
+    intent: string | undefined;
   },
 ): Promise<string> {
   const controller = new AbortController();
@@ -128,6 +129,29 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Delivers a full response text in small word-group bursts with randomized delays
+ * to simulate natural human typing rhythm (80–150 ms between groups).
+ */
+async function deliverWithRhythm(
+  text: string,
+  onChunk: (chunk: string) => void,
+): Promise<void> {
+  const words = text.split(" ");
+  let i = 0;
+  while (i < words.length) {
+    // deliver 2–4 words at a time
+    const groupSize = Math.floor(Math.random() * 3) + 2;
+    const isLast = i + groupSize >= words.length;
+    const group = words.slice(i, i + groupSize).join(" ");
+    onChunk(isLast ? group : group + " ");
+    i += groupSize;
+    if (!isLast) {
+      await sleep(80 + Math.floor(Math.random() * 70)); // 80–150 ms
+    }
+  }
+}
+
+/**
  * Fetch a streaming response from the secure Supabase Edge Function connecting to gpt-4o-mini.
  * @param userMessage The message the user just typed.
  * @param role The selected role of the companion (e.g. friend, boyfriend).
@@ -146,6 +170,7 @@ export async function getAIResponseStream(
   language: string = "Hinglish",
   moodContext: string | undefined,
   userId: string | undefined,
+  intent: string | undefined,
   onChunk: (chunk: string) => void,
 ): Promise<void> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -165,6 +190,7 @@ export async function getAIResponseStream(
     language,
     moodContext,
     userId,
+    intent,
   };
 
   // Use non-stream by default for mobile reliability
@@ -174,7 +200,7 @@ export async function getAIResponseStream(
       token || "",
       requestPayload,
     );
-    onChunk(text);
+    await deliverWithRhythm(text, onChunk);
     return;
   } catch (nonStreamErr: any) {
     logger.warn(
@@ -338,7 +364,7 @@ export async function getAIResponseStream(
       token || "",
       requestPayload,
     );
-    onChunk(fallbackText);
+    await deliverWithRhythm(fallbackText, onChunk);
     return;
   } catch (fallbackErr: any) {
     logger.error(
@@ -357,6 +383,27 @@ export async function getAIResponseStream(
   const fallbackMessage =
     fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
   onChunk(fallbackMessage);
+}
+
+/**
+ * Fire a lightweight OPTIONS ping to the chat edge function to pre-warm cold starts.
+ * Call this when the app foregrounds so the function is hot before the user types.
+ */
+export async function warmEdgeFunction(): Promise<void> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token || SUPABASE_ANON_KEY;
+    await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
+      method: "OPTIONS",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY || "",
+      },
+    });
+  } catch {
+    // Fire-and-forget — failure is acceptable
+  }
 }
 
 /**

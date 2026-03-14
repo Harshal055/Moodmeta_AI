@@ -227,8 +227,8 @@ export default function PaywallScreen() {
           revenueCatId: customerInfo.originalAppUserId,
         });
 
-        // Update app state
-        useAuth.setState({ isPremium: true });
+        // Update app state and push to database immediately
+        await useAuth.getState().syncPremiumStatus(true);
 
         // Show success
         alert.show({

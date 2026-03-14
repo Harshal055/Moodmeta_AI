@@ -2,14 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
@@ -113,7 +113,16 @@ export default function LanguagePicker() {
       <View style={{ flex: 1, paddingTop: insets.top }}>
         {/* Header */}
         <View className="px-5 pt-8 pb-6">
-          <TouchableOpacity onPress={() => router.back()} className="mb-6 w-10">
+          <TouchableOpacity
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(auth)/role-picker");
+              }
+            }}
+            className="mb-6 w-10"
+          >
             <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
           </TouchableOpacity>
 
@@ -128,7 +137,11 @@ export default function LanguagePicker() {
             How should they speak? 💬
           </Text>
           <Text
-            style={{ fontFamily: "Inter_400Regular", fontSize: 16, color: "#666" }}
+            style={{
+              fontFamily: "Inter_400Regular",
+              fontSize: 16,
+              color: "#666",
+            }}
           >
             Choose the primary language for your companion.
           </Text>
@@ -147,10 +160,11 @@ export default function LanguagePicker() {
                 <TouchableOpacity
                   onPress={() => setSelectedLanguage(lang.id)}
                   activeOpacity={0.7}
-                  className={`p-5 rounded-xl border-2 ${isSelected
-                    ? "border-[#1a1a2e] bg-[#FAFAFA]"
-                    : "border-transparent bg-[#F7F7F8]"
-                    }`}
+                  className={`p-5 rounded-xl border-2 ${
+                    isSelected
+                      ? "border-[#1a1a2e] bg-[#FAFAFA]"
+                      : "border-transparent bg-[#F7F7F8]"
+                  }`}
                 >
                   <View className="flex-row items-center justify-between">
                     <View>
@@ -213,7 +227,10 @@ export default function LanguagePicker() {
                       placeholderTextColor="#999"
                       returnKeyType="done"
                       className="bg-[#F7F7F8] border border-[#E8E8EA] rounded-xl px-4 py-4 text-[16px]"
-                      style={{ fontFamily: "Inter_500Medium", color: "#1a1a2e" }}
+                      style={{
+                        fontFamily: "Inter_500Medium",
+                        color: "#1a1a2e",
+                      }}
                     />
                   </View>
                 )}

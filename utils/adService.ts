@@ -6,6 +6,12 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import mobileAds, {
+  AdEventType,
+  RewardedAd,
+  RewardedAdEventType,
+  TestIds,
+} from "react-native-google-mobile-ads";
 import { logger } from "./logger";
 
 export interface AdConfig {
@@ -30,7 +36,7 @@ class AdService {
     ad_network: "admob",
     banner_ad_enabled: true,
     interstitial_ad_enabled: true,
-    rewarded_ad_enabled: false,
+    rewarded_ad_enabled: true,
     ad_frequency: "medium",
   };
 
@@ -38,10 +44,39 @@ class AdService {
   private lastAdTime: number = 0;
   private currentUserId: string | null = null;
   private adCooldownMs: number = 30000; // 30 seconds between ads
+  private initializedUserId: string | null = null;
+  private adMobInitialized = false;
+
+  private isUsingTestAds() {
+    return __DEV__ || process.env.DEBUG === "true";
+  }
+
+  getBannerAdUnitId(): string {
+    if (this.isUsingTestAds()) return TestIds.BANNER;
+    return process.env.EXPO_PUBLIC_ADMOB_BANNER_ANDROID_ID || TestIds.BANNER;
+  }
+
+  private getRewardedAdUnitId(): string {
+    if (this.isUsingTestAds()) return TestIds.REWARDED;
+    return (
+      process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID || TestIds.REWARDED
+    );
+  }
+
+  private async ensureAdMobInitialized() {
+    if (this.adMobInitialized) return;
+    await mobileAds().initialize();
+    this.adMobInitialized = true;
+    logger.info("AdMob SDK initialized");
+  }
 
   async init(userId: string) {
+    if (this.initializedUserId === userId) return;
     try {
       this.currentUserId = userId;
+      this.initializedUserId = userId;
+      await this.ensureAdMobInitialized();
+
       // Load ad config from storage
       const stored = await AsyncStorage.getItem(`@ad_config_${userId}`);
       if (stored) {
@@ -157,23 +192,91 @@ class AdService {
       return { watched: false, reward: "" };
     }
 
+    if (!this.shouldShowAds(isPremium)) {
+      return { watched: false, reward: "" };
+    }
+
     try {
-      // In production, integrate with AdMob:
-      // const adLoaded = await admob.RewardedAd.load();
-      // if (adLoaded) {
-      //   const reward = await admob.RewardedAd.show();
-      //   return { watched: true, reward: reward?.type };
-      // }
+      await this.ensureAdMobInitialized();
+      const rewarded = RewardedAd.createForAdRequest(
+        this.getRewardedAdUnitId(),
+        {
+          requestNonPersonalizedAdsOnly: true,
+        },
+      );
 
-      this.recordAdEvent({
-        type: "impression",
-        ad_type: "rewarded",
-        timestamp: new Date().toISOString(),
-        user_id: userId,
-      });
+      const result = await new Promise<{ watched: boolean; reward: string }>(
+        (resolve) => {
+          let rewardedEarned = false;
+          let rewardType = "";
+          let settled = false;
 
-      logger.info("Rewarded ad shown");
-      return { watched: true, reward: "5_mood_coins" };
+          const finish = (payload: { watched: boolean; reward: string }) => {
+            if (settled) return;
+            settled = true;
+            unsubscribeLoaded();
+            unsubscribeReward();
+            unsubscribeClosed();
+            unsubscribeError();
+            resolve(payload);
+          };
+
+          const unsubscribeLoaded = rewarded.addAdEventListener(
+            RewardedAdEventType.LOADED,
+            () => {
+              rewarded.show();
+            },
+          );
+
+          const unsubscribeReward = rewarded.addAdEventListener(
+            RewardedAdEventType.EARNED_REWARD,
+            (reward) => {
+              rewardedEarned = true;
+              rewardType = reward?.type || "reward";
+            },
+          );
+
+          const unsubscribeClosed = rewarded.addAdEventListener(
+            AdEventType.CLOSED,
+            () => {
+              if (rewardedEarned) {
+                this.recordAdEvent({
+                  type: "impression",
+                  ad_type: "rewarded",
+                  timestamp: new Date().toISOString(),
+                  user_id: userId,
+                });
+                this.lastAdTime = Date.now();
+                finish({ watched: true, reward: rewardType });
+              } else {
+                finish({ watched: false, reward: "" });
+              }
+            },
+          );
+
+          const unsubscribeError = rewarded.addAdEventListener(
+            AdEventType.ERROR,
+            (err) => {
+              logger.error("Rewarded ad failed:", err);
+              this.recordAdEvent({
+                type: "error",
+                ad_type: "rewarded",
+                timestamp: new Date().toISOString(),
+                user_id: userId,
+              });
+              finish({ watched: false, reward: "" });
+            },
+          );
+
+          rewarded.load();
+        },
+      );
+
+      if (result.watched) {
+        logger.info("Rewarded ad watched", { reward: result.reward });
+      }
+
+      return result;
     } catch (error) {
       logger.error("Failed to show rewarded ad:", error);
       return { watched: false, reward: "" };
@@ -216,7 +319,10 @@ class AdService {
       }
 
       if (this.currentUserId) {
-        await AsyncStorage.setItem(`@ad_config_${this.currentUserId}`, JSON.stringify(this.adConfig));
+        await AsyncStorage.setItem(
+          `@ad_config_${this.currentUserId}`,
+          JSON.stringify(this.adConfig),
+        );
       }
       logger.info(`Ad frequency set to: ${frequency}`);
     } catch (error) {
@@ -231,7 +337,10 @@ class AdService {
     try {
       this.adConfig.enabled = false;
       if (this.currentUserId) {
-        await AsyncStorage.setItem(`@ad_config_${this.currentUserId}`, JSON.stringify(this.adConfig));
+        await AsyncStorage.setItem(
+          `@ad_config_${this.currentUserId}`,
+          JSON.stringify(this.adConfig),
+        );
       }
       logger.info("Ads disabled");
     } catch (error) {
@@ -246,7 +355,10 @@ class AdService {
     try {
       this.adConfig.enabled = true;
       if (this.currentUserId) {
-        await AsyncStorage.setItem(`@ad_config_${this.currentUserId}`, JSON.stringify(this.adConfig));
+        await AsyncStorage.setItem(
+          `@ad_config_${this.currentUserId}`,
+          JSON.stringify(this.adConfig),
+        );
       }
       logger.info("Ads enabled");
     } catch (error) {
@@ -341,6 +453,7 @@ class AdService {
       }
 
       this.adEvents = [];
+      this.initializedUserId = null;
       logger.info("Ad service cleaned up");
     } catch (error) {
       logger.error("Failed to cleanup ad service:", error);

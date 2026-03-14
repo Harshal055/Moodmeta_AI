@@ -12,43 +12,53 @@ import { Audio as ExpoAudio } from "expo-av";
 import * as Crypto from "expo-crypto";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
-  ActivityIndicator,
-  AppState,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    AppState,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import {
-  Bubble,
-  GiftedChat,
-  IMessage,
-  InputToolbar,
-  MessageText,
-  Send,
+    Bubble,
+    GiftedChat,
+    IMessage,
+    InputToolbar,
+    MessageText,
+    Send,
 } from "react-native-gifted-chat";
+import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import {
-  getAIResponseStream,
-  transcribeAudio,
+    getAIResponseStream,
+    transcribeAudio,
+    warmEdgeFunction,
 } from "../../services/openaiService";
 import { adService } from "../../utils/adService";
 import { aiMemoryService } from "../../utils/aiMemoryService";
 import { shareChat } from "../../utils/chatExport";
 import { isFeatureEnabled } from "../../utils/featureFlags";
 import { logger } from "../../utils/logger";
+import { NotificationService } from "../../utils/notificationService";
 import { offlineSyncService } from "../../utils/offlineSyncService";
 import { speakMessage, stopSpeech } from "../../utils/voiceService";
 
 const MESSAGES_PER_PAGE = 20;
 const CURRENT_USER = { _id: 1, name: "You" };
 const FREE_MESSAGE_LIMIT = 20;
+const AI_PLACEHOLDER_TEXT = "...";
 const COMPANION_AVATARS: Record<string, any> = {
   friend: require("../../assets/images/avatar_friend.png"),
   boyfriend: require("../../assets/images/avatar_boyfriend.png"),
@@ -57,6 +67,58 @@ const COMPANION_AVATARS: Record<string, any> = {
   father: require("../../assets/images/avatar_father.png"),
   default: require("../../assets/images/logo.png"),
 };
+
+/** Client-side intent classifier — determines how the AI should respond. */
+function detectIntent(
+  text: string,
+): "venting" | "crisis" | "seeking_advice" | "question" | "casual_chat" {
+  const lower = text.toLowerCase();
+  const crisisWords = [
+    "suicide",
+    "kill myself",
+    "end my life",
+    "want to die",
+    "hurt myself",
+    "self harm",
+    "don't want to live",
+  ];
+  const ventingWords = [
+    "so frustrated",
+    "so angry",
+    "i hate",
+    "ugh",
+    "so tired of",
+    "can't take",
+    "fed up",
+    "so upset",
+    "so sad",
+    "crying",
+    "i'm done",
+    "exhausted",
+    "overwhelmed",
+  ];
+  const adviceWords = [
+    "what should i",
+    "how do i",
+    "should i",
+    "what do you think",
+    "help me decide",
+    "what would you",
+    "what to do",
+  ];
+  if (crisisWords.some((w) => lower.includes(w))) return "crisis";
+  if (ventingWords.some((w) => lower.includes(w))) return "venting";
+  if (adviceWords.some((w) => lower.includes(w))) return "seeking_advice";
+  if (lower.includes("?")) return "question";
+  return "casual_chat";
+}
+
+function isAiPlaceholderText(text: string | null | undefined): boolean {
+  if (typeof text !== "string") return true;
+  const trimmed = text.trim();
+  // Treat dot-only placeholders as non-content ("...", "…", ".. ..", etc.).
+  return trimmed.length === 0 || /^[.\u2026\s]+$/.test(trimmed);
+}
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -89,6 +151,12 @@ export default function ChatScreen() {
   const [isOnline, setIsOnline] = useState(true);
   const recordingRef = useRef<ExpoAudio.Recording | null>(null);
   const trackedSessionUserRef = useRef<string | null>(null);
+  const hasLoadedInitialHistoryForUserRef = useRef<string | null>(null);
+  const lastForegroundRefreshAtRef = useRef(0);
+  const isLoadingHistoryRef = useRef(false);
+  const greetingInsertedRef = useRef(false);
+  const hasHydratedCacheRef = useRef(false);
+  const lastMoodContextRef = useRef<string | undefined>(undefined);
 
   // Use a ref to keep track of the latest messages safely without causing React to
   // endlessly recreate the onSend callback and glitch out the GiftedChat input UI.
@@ -102,13 +170,20 @@ export default function ChatScreen() {
   const userRole = profile?.role || "default";
   const userLanguage = profile?.language || "Hinglish";
   const isPremium = useAuth((s) => s.isPremium);
+  const chatBottomOffset = Math.max(
+    insets.bottom,
+    Platform.OS === "android" ? 12 : 0,
+  );
 
   // AI Avatar config for GiftedChat
   const AI_USER = useMemo(
     () => ({
       _id: 2,
       name: companionName,
-      avatar: profile?.avatar_url || COMPANION_AVATARS[userRole] || COMPANION_AVATARS.default,
+      avatar:
+        profile?.avatar_url ||
+        COMPANION_AVATARS[userRole] ||
+        COMPANION_AVATARS.default,
     }),
     [companionName, profile?.avatar_url, userRole],
   );
@@ -165,19 +240,56 @@ export default function ChatScreen() {
     return () => clearTimeout(timer);
   }, [errorToast]);
 
+  // Force limit check refresh when premium status changes mid-session
+  useEffect(() => {
+    if (user?.id) {
+      if (isPremium) {
+        setHitLimit(false);
+      } else if (messages.length > 0) {
+        // Recount user messages to be sure
+        const userMsgCount = messages.filter((m) => m.user._id === 1).length;
+        if (userMsgCount >= FREE_MESSAGE_LIMIT) {
+          setHitLimit(true);
+        }
+      }
+    }
+  }, [isPremium, user?.id]);
+
   // Handle app background/foreground transitions — wired after loadHistory is declared below
+
+  // ── Session reset on user change ──────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+
+    if (trackedSessionUserRef.current !== user.id) {
+      trackedSessionUserRef.current = user.id;
+      hasLoadedInitialHistoryForUserRef.current = null;
+      hasHydratedCacheRef.current = false;
+      greetingInsertedRef.current = false;
+      lastMoodContextRef.current = undefined;
+      setMessages([]);
+      setHasMoreMessages(false);
+      setIsLoadingHistory(true);
+    }
+  }, [user?.id]);
 
   // ── Load chat history ─────────────────────────────────────────────
   // Ghost user check is already handled in useAuth.initialize(),
   // no need to re-check here on every chat screen mount.
   useEffect(() => {
     if (!user || !profile) return;
+
+    // Avoid repeated initial reloads for the same user during profile/store churn.
+    if (hasLoadedInitialHistoryForUserRef.current === user.id) return;
+
+    hasLoadedInitialHistoryForUserRef.current = user.id;
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, profile?.id]); // Only refetch if the actual ID changes, not the object reference
+  }, [user?.id, profile?.id]);
 
-  const loadHistory = async (loadMore = false) => {
-    if (!user || !profile) return;
+  const loadHistory = async (loadMore = false, skipCacheHydration = false) => {
+    if (!user || !profile || isLoadingHistoryRef.current) return;
+    isLoadingHistoryRef.current = true;
     const cacheKey = `chat_history_${user.id}`;
 
     // If loading more, set loading state but don't touch initial loading state
@@ -186,20 +298,35 @@ export default function ChatScreen() {
     } else {
       // 1. INSTANT LOAD: Try to load from Local Storage first (initial load only)
       try {
-        const cachedData = await AsyncStorage.getItem(cacheKey);
-        if (cachedData) {
-          const parsedCache = JSON.parse(cachedData);
-          // Hydrate dates since JSON strigifies them
-          const hydratedMessages = parsedCache.map((msg: any) => ({
-            ...msg,
-            createdAt: new Date(msg.createdAt),
-          }));
-          // Instantly show cached messages (no loading spinner required!)
-          setMessages(hydratedMessages);
-          setIsLoadingHistory(false);
-          // Limit will be checked accurately via the DB count query below
-        } else {
-          // Only show loading spinner if we have absolutely no cache
+        // Hydrate cache only once per chat session/user and only when there are
+        // no in-memory messages yet. Re-hydrating later can cause visible flicker.
+        const shouldHydrateCache =
+          !skipCacheHydration &&
+          !hasHydratedCacheRef.current &&
+          messagesRef.current.length === 0;
+
+        if (shouldHydrateCache) {
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsedCache = JSON.parse(cachedData);
+            // Hydrate dates since JSON stringifies them
+            const hydratedMessages = parsedCache
+              .filter(
+                (msg: any) =>
+                  !(msg?.user?._id !== 1 && isAiPlaceholderText(msg?.text)),
+              )
+              .map((msg: any) => ({
+                ...msg,
+                createdAt: new Date(msg.createdAt),
+              }));
+            setMessages(hydratedMessages);
+            setIsLoadingHistory(false);
+          }
+          hasHydratedCacheRef.current = true;
+        }
+
+        if (messagesRef.current.length === 0) {
+          // Only show loading spinner if we still have no local or in-memory messages.
           setIsLoadingHistory(true);
         }
       } catch (e) {
@@ -213,12 +340,24 @@ export default function ChatScreen() {
       const offset = loadMore ? messages.length : 0;
       const limit = MESSAGES_PER_PAGE;
 
-      const { data, error } = await supabase
-        .from("chats")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1);
+      // Parallelize data + count queries for faster first-paint
+      const [{ data, error }, { count, error: countError }] = await Promise.all(
+        [
+          supabase
+            .from("chats")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .range(offset, offset + limit - 1),
+          !loadMore
+            ? supabase
+                .from("chats")
+                .select("id", { count: "exact", head: true })
+                .eq("user_id", user.id)
+                .eq("is_from_ai", false)
+            : Promise.resolve({ count: null, error: null }),
+        ],
+      );
 
       if (error) {
         logger.error("Load history error:", error.message);
@@ -234,7 +373,33 @@ export default function ChatScreen() {
           ]);
         }
       } else if (data) {
-        const formattedHistory: IMessage[] = data.map((msg: any) => ({
+        const placeholderIds = data
+          .filter(
+            (msg: any) => msg.is_from_ai && isAiPlaceholderText(msg.message),
+          )
+          .map((msg: any) => msg.id)
+          .filter(Boolean);
+
+        if (placeholderIds.length > 0) {
+          supabase
+            .from("chats")
+            .delete()
+            .in("id", placeholderIds)
+            .then(({ error }) => {
+              if (error) {
+                logger.warn(
+                  "Failed to clean placeholder chat rows:",
+                  error.message,
+                );
+              }
+            });
+        }
+
+        const sanitizedData = data.filter(
+          (msg: any) => !(msg.is_from_ai && isAiPlaceholderText(msg.message)),
+        );
+
+        const formattedHistory: IMessage[] = sanitizedData.map((msg: any) => ({
           _id: msg.id,
           text: msg.message,
           createdAt: new Date(msg.created_at),
@@ -261,55 +426,65 @@ export default function ChatScreen() {
               return prev; // No new messages to append, skip UI flash!
             }
 
-            // SMART MERGE: Don't just overwrite! The user might have just typed 
+            // SMART MERGE: Don't just overwrite! The user might have just typed
             // a new temporary message that isn't in 'formattedHistory' yet.
             // We merge them by unique ID, keeping the absolute newest on top.
             const mergedMap = new Map();
 
             // Add old cloud history first
-            formattedHistory.forEach(msg => mergedMap.set(msg._id, msg));
+            formattedHistory.forEach((msg) => mergedMap.set(msg._id, msg));
 
             // Overwrite/Append any newer local state (like optimistic messages)
-            prev.forEach(msg => mergedMap.set(msg._id, msg));
+            prev.forEach((msg) => mergedMap.set(msg._id, msg));
 
             // Convert back to Array and sort descending by date
             const finalMerged = Array.from(mergedMap.values()).sort((a, b) => {
-              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+              return (
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+              );
             });
 
-            return finalMerged;
+            return finalMerged.filter(
+              (msg) =>
+                !(msg.user._id === 2 && isAiPlaceholderText(String(msg.text))),
+            );
           });
 
-          AsyncStorage.setItem(cacheKey, JSON.stringify(formattedHistory.slice(0, MESSAGES_PER_PAGE)));
+          AsyncStorage.setItem(
+            cacheKey,
+            JSON.stringify(formattedHistory.slice(0, MESSAGES_PER_PAGE)),
+          );
         }
 
-        // For limit checking, count ALL user messages via a separate count query
-        if (!loadMore) {
-          const { count, error: countError } = await supabase
-            .from("chats")
-            .select("id", { count: "exact", head: true })
-            .eq("user_id", user.id)
-            .eq("is_from_ai", false);
-
-          if (!countError && count !== null) {
-            checkLimit(count);
-          }
+        // Use parallel count result for limit check
+        if (!loadMore && !countError && count !== null) {
+          checkLimit(count);
         }
 
         // --- Generate first greeting if chat is completely empty ---
-        if (!loadMore && data.length === 0) {
+        // CRITICAL GUARD: Only insert greeting if we have NO messages and haven't inserted one this session
+        // We check messagesRef again to be absolutely sure no other process injected messages while we were fetching.
+        if (
+          !loadMore &&
+          sanitizedData.length === 0 &&
+          messages.length === 0 &&
+          messagesRef.current.length === 0 &&
+          !greetingInsertedRef.current &&
+          !isLoadingHistory // Double check main loading state hasn't flipped
+        ) {
+          greetingInsertedRef.current = true;
           // Role-aware greeting — tailored per companion type
           const greetingByRole: Record<string, string> = {
             girlfriend: `Hey baby, I'm ${companionName}... how are you feeling today? 💕`,
-            boyfriend:  `Hey babe, I'm ${companionName}... how's your day going? 💙`,
-            mother:     `Hey sweetheart, I'm ${companionName}. I'm always here for you — how are you feeling? 💜`,
-            father:     `Hey champ, I'm ${companionName}. How are you doing today? 🧡`,
-            friend:     `Hey! I'm ${companionName} — your new companion 😊 How are you feeling today?`,
+            boyfriend: `Hey babe, I'm ${companionName}... how's your day going? 💙`,
+            mother: `Hey sweetheart, I'm ${companionName}. I'm always here for you — how are you feeling? 💜`,
+            father: `Hey champ, I'm ${companionName}. How are you doing today? 🧡`,
+            friend: `Hey! I'm ${companionName} — your new companion 😊 How are you feeling today?`,
           };
-          const firstGreeting = greetingByRole[userRole] || `Hi, I'm ${companionName}! How are you feeling today? ✨`;
-          // Use a stable UUID so the optimistic _id matches the DB row id.
-          // Without this, realtime echoes the INSERT with a *different* server-generated
-          // UUID and dedup fails → duplicate greeting bubble.
+          const firstGreeting =
+            greetingByRole[userRole] ||
+            `Hi, I'm ${companionName}! How are you feeling today? ✨`;
           const greetingId = Crypto.randomUUID();
           const firstMsg: IMessage = {
             _id: greetingId,
@@ -321,8 +496,6 @@ export default function ChatScreen() {
           setMessages([firstMsg]);
           setHasMoreMessages(false);
 
-          // Save to DB in background — pass the same greetingId so the DB row
-          // id matches the optimistic _id the realtime subscription checks.
           supabase
             .from("chats")
             .insert({
@@ -332,9 +505,55 @@ export default function ChatScreen() {
               is_from_ai: true,
             })
             .then(({ error }) => {
-              if (error)
+              if (error) {
                 logger.error("Save first greeting error:", error.message);
+                greetingInsertedRef.current = false; // Allow retry on failure
+              }
             });
+        }
+
+        // Pro: inject a callback message when user returns after 24h+ absence
+        if (
+          !loadMore &&
+          isPremium &&
+          sanitizedData.length > 0 &&
+          !greetingInsertedRef.current
+        ) {
+          const lastMsg = sanitizedData[0]; // sorted DESC — most recent first
+          const hoursSinceLast =
+            (Date.now() - new Date(lastMsg.created_at).getTime()) /
+            (1000 * 60 * 60);
+          if (hoursSinceLast >= 24 && !lastMsg.is_from_ai) {
+            greetingInsertedRef.current = true;
+            const callbackPhrases = [
+              `Hey, I've been thinking about you... how are you doing? 💭`,
+              `You've been on my mind. How's everything going? 🌸`,
+              `It's been a while! I missed our conversations. How are you feeling today? 💙`,
+            ];
+            const callbackText =
+              callbackPhrases[
+                Math.floor(Math.random() * callbackPhrases.length)
+              ];
+            const callbackId = Crypto.randomUUID();
+            const callbackMsg: IMessage = {
+              _id: callbackId,
+              text: callbackText,
+              createdAt: new Date(),
+              user: AI_USER,
+            };
+            setMessages((prev) => GiftedChat.append(prev, [callbackMsg]));
+            supabase
+              .from("chats")
+              .insert({
+                id: callbackId,
+                user_id: user.id,
+                message: callbackText,
+                is_from_ai: true,
+              })
+              .then(({ error }) => {
+                if (error) logger.warn("Callback insert failed:", error);
+              });
+          }
         }
 
         // Cache the newly fetched backend truth locally (only on initial load)
@@ -352,6 +571,7 @@ export default function ChatScreen() {
     } catch (err) {
       logger.error("loadHistory error:", err);
     } finally {
+      isLoadingHistoryRef.current = false;
       if (loadMore) {
         setIsLoadingMore(false);
       } else {
@@ -372,9 +592,25 @@ export default function ChatScreen() {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "background") {
         logger.info("Chat: App moved to background.");
+        // Schedule mood-aware re-engagement notification for Pro users
+        if (isPremium) {
+          NotificationService.scheduleMoodAwareCheckIn(
+            companionName,
+            lastMoodContextRef.current,
+          ).catch(() => {});
+        }
       } else if (nextAppState === "active") {
+        const now = Date.now();
+        if (now - lastForegroundRefreshAtRef.current < 1500) {
+          return;
+        }
+        lastForegroundRefreshAtRef.current = now;
+
         logger.info("Chat: App returned to foreground. Refreshing history...");
-        loadHistory();
+        // Pre-warm the edge function to reduce cold-start latency
+        warmEdgeFunction();
+        // On foreground refresh, fetch backend truth without resetting UI from cache.
+        loadHistory(false, true);
       }
     });
     return () => subscription.remove();
@@ -429,6 +665,15 @@ export default function ChatScreen() {
           // IMPORTANT: Check if we are the ones who just sent this message
           // Real-time can echo our own inserts back to us.
           if (!newMsg.is_from_ai) return;
+          if (isAiPlaceholderText(newMsg.message)) {
+            supabase
+              .from("chats")
+              .delete()
+              .eq("id", newMsg.id)
+              .then(() => {})
+              .catch(() => {});
+            return;
+          }
 
           const formattedMsg: IMessage = {
             _id: newMsg.id,
@@ -530,7 +775,6 @@ export default function ChatScreen() {
     ) => {
       if (!user) return;
 
-
       setRetryPending(false);
       setRetryPayload(null);
       setIsTyping(true);
@@ -538,7 +782,9 @@ export default function ChatScreen() {
       // Track sync status for user message
       if (persistUserMessage && userMessageId) {
         setMessages((prev) =>
-          prev.map((m) => (m._id === userMessageId ? { ...m, pendingSync: true } : m)),
+          prev.map((m) =>
+            m._id === userMessageId ? { ...m, pendingSync: true } : m,
+          ),
         );
 
         const performInsert = async () => {
@@ -581,61 +827,68 @@ export default function ChatScreen() {
       }
 
       // Stable UUID so the optimistic _id matches the DB row id.
-      // Math.random() caused duplicates because realtime echoed back
-      // a server-generated UUID that didn't match the local _id.
       const aiMessageId = Crypto.randomUUID();
       let streamingText = "";
-      let aiMessageAdded = false;
 
-      // Get user context from AI Memory Service (Pro feature)
+      // Get user context: run mood + memory in parallel for speed
       let moodContext: string | undefined;
       let userMemoryContext = "";
 
-      try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const shouldLoadMemory =
+        isPremium && isFeatureEnabled("aiMemory", isPremium);
 
-        const { data } = await supabase
-          .from("mood_logs")
-          .select("mood_score")
-          .eq("user_id", user.id)
-          .gte("created_at", today.toISOString())
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
+      const [moodResult, memoryData] = await Promise.all([
+        (async () => {
+          const { data, error } = await supabase
+            .from("mood_logs")
+            .select("mood_score")
+            .eq("user_id", user.id)
+            .gte("created_at", today.toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-        if (data?.mood_score) {
-          const MOOD_MAP: Record<number, string> = {
-            1: "Terrible",
-            2: "Bad",
-            3: "Okay",
-            4: "Good",
-            5: "Great",
-          };
-          moodContext = MOOD_MAP[data.mood_score];
-        }
-      } catch (e) { }
-
-      // Load AI memory for personalized context (Pro feature)
-      if (isPremium && isFeatureEnabled("aiMemory", isPremium)) {
-        try {
-          const memory = await aiMemoryService.getUserMemory(user.id);
-          if (memory) {
-            const interests = memory.interests?.length
-              ? memory.interests.join(", ")
-              : "";
-            const topics = memory.favorite_topics?.length
-              ? memory.favorite_topics.join(", ")
-              : "";
-            userMemoryContext = `User interests: ${interests}. Favorite topics: ${topics}. Preferred tone: ${memory.preferred_tone}.`;
-
-            // Update current mood in memory
-            if (moodContext) {
-              await aiMemoryService.recordCurrentMood(user.id, moodContext);
-            }
+          if (error) {
+            logger.warn("Failed to load mood context:", error.message);
+            return { data: null };
           }
-        } catch (err) {
-          logger.warn("Failed to load AI memory:", err);
+
+          return { data };
+        })(),
+        shouldLoadMemory
+          ? aiMemoryService.getUserMemory(user.id).catch((err: unknown) => {
+              logger.warn("Failed to load AI memory:", err);
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
+
+      if (moodResult.data?.mood_score) {
+        const MOOD_MAP: Record<number, string> = {
+          1: "Terrible",
+          2: "Bad",
+          3: "Okay",
+          4: "Good",
+          5: "Great",
+        };
+        moodContext = MOOD_MAP[moodResult.data.mood_score];
+        lastMoodContextRef.current = moodContext;
+      }
+
+      if (memoryData) {
+        const interests = memoryData.interests?.length
+          ? memoryData.interests.join(", ")
+          : "";
+        const topics = memoryData.favorite_topics?.length
+          ? memoryData.favorite_topics.join(", ")
+          : "";
+        userMemoryContext = `User interests: ${interests}. Favorite topics: ${topics}. Preferred tone: ${memoryData.preferred_tone}.`;
+        if (moodContext) {
+          aiMemoryService
+            .recordCurrentMood(user.id, moodContext)
+            .catch(() => {});
         }
       }
 
@@ -643,10 +896,25 @@ export default function ChatScreen() {
       const finalHistory = [...historyForOpenAI];
       if (userMemoryContext) {
         finalHistory.unshift({
-          role: "user" as const, // Use user role since OpenAI edge function may not support system role directly in history array
+          role: "user" as const,
           content: `[System Context: ${userMemoryContext}]`,
         });
       }
+
+      // Detect intent to guide AI tone and response style
+      const intent = detectIntent(userText);
+
+      // Pre-insert optimistic AI bubble immediately — user sees it before first chunk
+      setMessages((prev) =>
+        GiftedChat.append(prev, [
+          {
+            _id: aiMessageId,
+            text: " ",
+            createdAt: new Date(),
+            user: AI_USER,
+          },
+        ]),
+      );
 
       try {
         await getAIResponseStream(
@@ -657,41 +925,15 @@ export default function ChatScreen() {
           userLanguage || "Hinglish",
           moodContext,
           user.id,
+          intent,
           (chunk: string) => {
             streamingText += chunk;
-
-            if (!aiMessageAdded) {
-              aiMessageAdded = true;
-              const newAiMsg: IMessage = {
-                _id: aiMessageId,
-                text: streamingText,
-                createdAt: new Date(),
-                user: AI_USER,
-              };
-              setMessages((previousMessages) =>
-                GiftedChat.append(previousMessages, [newAiMsg]),
-              );
-
-              // INITIAL SAVE: Create the record in DB as soon as first chunk arrives
-              // This prevents history loss if the app crashes mid-stream
-              supabase.from("chats").insert({
-                id: aiMessageId,
-                user_id: user.id,
-                message: streamingText,
-                is_from_ai: true,
-              }).then(({ error }) => {
-                if (error) logger.warn("Initial AI save failed:", error.message);
-              });
-            } else {
-              setMessages((currentMsgs) => {
-                return currentMsgs.map((m) => {
-                  if (m._id === aiMessageId) {
-                    return { ...m, text: streamingText };
-                  }
-                  return m;
-                });
-              });
-            }
+            // Always update the pre-inserted bubble in place
+            setMessages((currentMsgs) =>
+              currentMsgs.map((m) =>
+                m._id === aiMessageId ? { ...m, text: streamingText } : m,
+              ),
+            );
           },
         );
       } catch (streamErr: any) {
@@ -699,15 +941,11 @@ export default function ChatScreen() {
           const fallback =
             "Yaar abhi connection thoda slow hai... thodi der mein try karo 💙";
           streamingText = fallback;
-
-          const fallbackMsg: IMessage = {
-            _id: aiMessageId,
-            text: fallback,
-            createdAt: new Date(),
-            user: AI_USER,
-          };
-          setMessages((previousMessages) =>
-            GiftedChat.append(previousMessages, [fallbackMsg]),
+          // Update the pre-inserted bubble with fallback text
+          setMessages((curr) =>
+            curr.map((m) =>
+              m._id === aiMessageId ? { ...m, text: fallback } : m,
+            ),
           );
         }
 
@@ -719,11 +957,24 @@ export default function ChatScreen() {
 
       setIsTyping(false);
 
-      // FINAL SAVE: Update the record with full text
+      const finalAiText =
+        streamingText && !isAiPlaceholderText(streamingText)
+          ? streamingText
+          : "Sorry, I could not generate a proper reply right now. Please try again. 💙";
+
+      if (finalAiText !== streamingText) {
+        setMessages((curr) =>
+          curr.map((m) =>
+            m._id === aiMessageId ? { ...m, text: finalAiText } : m,
+          ),
+        );
+      }
+
+      // FINAL SAVE: Persist only finalized AI text
       const { error: aiMsgError } = await supabase.from("chats").upsert({
         id: aiMessageId,
         user_id: user.id,
-        message: streamingText,
+        message: finalAiText,
         is_from_ai: true,
       });
 
@@ -731,7 +982,7 @@ export default function ChatScreen() {
         logger.error("Save AI msg error:", aiMsgError.message);
       }
     },
-    [user, userRole, companionName, userLanguage, AI_USER],
+    [user, userRole, companionName, userLanguage, AI_USER, isPremium],
   );
 
   // ── Send message ─────────────────────────────────────────────────
@@ -756,7 +1007,9 @@ export default function ChatScreen() {
       // This prevents duplicates when the background sync or cache reload fetches
       // the same message from the server with its real id.
       const stableId = Crypto.randomUUID();
-      const messagesWithStableId = [{ ...msg, _id: stableId, pendingSync: true }];
+      const messagesWithStableId = [
+        { ...msg, _id: stableId, pendingSync: true },
+      ];
 
       // Optimistic append
       setMessages((previousMessages) =>
@@ -807,11 +1060,15 @@ export default function ChatScreen() {
           setPlayingMessageId(null);
         } else {
           setPlayingMessageId(messageId);
-          await speakMessage(text, {
-            rate: 0.95,
-            pitch: 1.05,
-            language: userLanguage === "Hinglish" ? "hi-IN" : "en-US",
-          }, userRole);
+          await speakMessage(
+            text,
+            {
+              rate: 0.95,
+              pitch: 1.05,
+              language: userLanguage === "Hinglish" ? "hi-IN" : "en-US",
+            },
+            userRole,
+          );
           setPlayingMessageId(null);
         }
       } catch (error) {
@@ -832,7 +1089,9 @@ export default function ChatScreen() {
         messages.map((m) => ({
           role: m.user._id === 1 ? "user" : "assistant",
           content: m.text,
-          timestamp: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+          timestamp: m.createdAt
+            ? new Date(m.createdAt).toISOString()
+            : new Date().toISOString(),
         })),
         companionName,
         profile?.companion_name || "You",
@@ -900,9 +1159,35 @@ export default function ChatScreen() {
           />
           {/* Sync status for user messages */}
           {!isAI && props.currentMessage.pendingSync && (
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingRight: 8, marginTop: -4, marginBottom: 8 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FEF2F2", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
-                <Text style={{ fontSize: 10, color: "#EF4444", marginRight: 4, fontFamily: "Inter_600SemiBold" }}>Sending...</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "flex-end",
+                paddingRight: 8,
+                marginTop: -4,
+                marginBottom: 8,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#FEF2F2",
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: "#EF4444",
+                    marginRight: 4,
+                    fontFamily: "Inter_600SemiBold",
+                  }}
+                >
+                  Sending...
+                </Text>
                 <ActivityIndicator size={10} color="#EF4444" />
               </View>
             </View>
@@ -928,23 +1213,44 @@ export default function ChatScreen() {
                   width: 36,
                   height: 28,
                   borderRadius: 14,
-                  backgroundColor: playingMessageId === props.currentMessage._id
-                    ? "#FF6B9D"
-                    : "#F8F9FA",
+                  backgroundColor:
+                    playingMessageId === props.currentMessage._id
+                      ? "#FF6B9D"
+                      : "#F8F9FA",
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
-                  borderColor: playingMessageId === props.currentMessage._id ? "#FF6B9D" : "#E5E7EB",
+                  borderColor:
+                    playingMessageId === props.currentMessage._id
+                      ? "#FF6B9D"
+                      : "#E5E7EB",
                 }}
               >
                 <Ionicons
-                  name={playingMessageId === props.currentMessage._id ? "pause" : "volume-medium"}
+                  name={
+                    playingMessageId === props.currentMessage._id
+                      ? "pause"
+                      : "volume-medium"
+                  }
                   size={14}
-                  color={playingMessageId === props.currentMessage._id ? "#fff" : "#666"}
+                  color={
+                    playingMessageId === props.currentMessage._id
+                      ? "#fff"
+                      : "#666"
+                  }
                 />
               </View>
               {playingMessageId === props.currentMessage._id && (
-                <Text style={{ marginLeft: 6, fontSize: 10, color: "#FF6B9D", fontFamily: "Inter_600SemiBold" }}>Speaking...</Text>
+                <Text
+                  style={{
+                    marginLeft: 6,
+                    fontSize: 10,
+                    color: "#FF6B9D",
+                    fontFamily: "Inter_600SemiBold",
+                  }}
+                >
+                  Speaking...
+                </Text>
               )}
             </TouchableOpacity>
           )}
@@ -989,6 +1295,7 @@ export default function ChatScreen() {
             borderTopColor: "#F0F0F0",
             paddingHorizontal: 8,
             paddingVertical: 4,
+            paddingBottom: Math.max(chatBottomOffset, 4),
           }}
           primaryStyle={{
             alignItems: "center",
@@ -996,7 +1303,9 @@ export default function ChatScreen() {
           renderActions={() => (
             <TouchableOpacity
               onPress={isRecording ? stopAndTranscribe : startRecording}
-              accessibilityLabel={isRecording ? "Stop recording" : "Start voice recording"}
+              accessibilityLabel={
+                isRecording ? "Stop recording" : "Start voice recording"
+              }
               accessibilityRole="button"
               style={{
                 width: 44,
@@ -1022,7 +1331,7 @@ export default function ChatScreen() {
         />
       );
     },
-    [hitLimit, isPremium, isRecording, isTranscribing],
+    [hitLimit, isPremium, isRecording, isTranscribing, chatBottomOffset],
   );
 
   const renderSend = useCallback((props: any) => {
@@ -1050,7 +1359,7 @@ export default function ChatScreen() {
   }, []);
 
   // ── Auth loading state ────────────────────────────────────────────
-  if (isAuthLoading) {
+  if (isAuthLoading && !user) {
     return (
       <View className="flex-1 items-center justify-center bg-[#F8FBFF]">
         <ActivityIndicator size="large" color="#1a1a2e" />
@@ -1070,9 +1379,9 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      keyboardVerticalOffset={0}
     >
       <View className="flex-1 bg-[#F8FBFF]">
         {/* Header */}
@@ -1333,17 +1642,31 @@ export default function ChatScreen() {
 
         <GiftedChat
           messages={messages}
-          onSend={(messages) => onSend(messages)}
+          onSend={(newMsgs: IMessage[]) => onSend(newMsgs)}
           user={CURRENT_USER}
           isTyping={isTyping}
           renderBubble={renderBubble}
           renderMessageText={renderMessageText}
           renderInputToolbar={renderInputToolbar}
           renderSend={renderSend}
-          renderAvatar={(props) => (
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#FDF2F8", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FCE7F3" }}>
+          renderAvatar={(props: any) => (
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "#FDF2F8",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "#FCE7F3",
+              }}
+            >
               {profile?.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                <Image
+                  source={{ uri: profile.avatar_url }}
+                  style={{ width: 36, height: 36, borderRadius: 18 }}
+                />
               ) : (
                 <Text style={{ fontSize: 18 }}>❤️</Text>
               )}
@@ -1352,14 +1675,35 @@ export default function ChatScreen() {
           // @ts-ignore
           showUserAvatar={false}
           showAvatarForEveryMessage={false}
-          bottomOffset={Platform.OS === "ios" ? insets.bottom : 0}
+          bottomOffset={chatBottomOffset}
           placeholder="Type a message..."
           alwaysShowSend
-          isKeyboardInternallyHandled={false}
+          isKeyboardInternallyHandled
+          listViewProps={{
+            keyboardShouldPersistTaps: "handled",
+          }}
           loadEarlier={hasMoreMessages}
           isLoadingEarlier={isLoadingMore}
           onLoadEarlier={handleLoadEarlier}
         />
+
+        {!isPremium && showAd && (
+          <View
+            style={{
+              backgroundColor: "#fff",
+              borderTopWidth: 1,
+              borderTopColor: "#F0F0F0",
+              alignItems: "center",
+              paddingVertical: 6,
+            }}
+          >
+            <BannerAd
+              unitId={adService.getBannerAdUnitId()}
+              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+              requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+            />
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );

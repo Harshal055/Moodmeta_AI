@@ -14,21 +14,21 @@ export default function BottomNav() {
             label: "Home",
             icon: "home",
             outlineIcon: "home-outline",
-            route: "/(main)/dashboard"
+            route: "/dashboard"
         },
         {
             id: "chat",
             label: "Chat",
             icon: "chatbubble-ellipses",
             outlineIcon: "chatbubble-ellipses-outline",
-            route: "/(main)/chat"
+            route: "/chat"
         },
         {
             id: "settings",
             label: "Settings",
             icon: "settings",
             outlineIcon: "settings-outline",
-            route: "/(main)/settings"
+            route: "/settings"
         }
     ];
 
@@ -50,13 +50,13 @@ export default function BottomNav() {
                 }}
             >
                 {navItems.map((item) => {
-                    const isActive = pathname === item.route;
+                    const isActive = pathname.startsWith(item.route);
                     return (
                         <TouchableOpacity
                             key={item.id}
                             onPress={() => {
                                 if (!isActive) {
-                                    router.push(item.route as any);
+                                    router.replace(item.route as any);
                                 }
                             }}
                             className={`w-[33.3%] items-center py-2 rounded-full ${isActive ? "bg-indigo-50/80" : ""}`}

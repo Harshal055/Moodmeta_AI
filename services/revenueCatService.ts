@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import Purchases, {
     CustomerInfo,
     LOG_LEVEL,
-    Offering,
+    PurchasesOffering as Offering,
     PurchasesPackage,
 } from "react-native-purchases";
 import { logger } from "../utils/logger";
@@ -21,10 +21,17 @@ function isTestKey(key: string): boolean {
 }
 
 export const revenueCatService = {
+  _isInitialized: false,
+  _isListenerAttached: false,
+
   /**
    * Initialize the RevenueCat SDK
    */
   async initialize() {
+    if (this._isInitialized) {
+      return;
+    }
+
     try {
       // Use ERROR level in production to avoid leaking purchase tokens
       // and receipt data into device logs. VERBOSE is only for dev debugging.
@@ -64,6 +71,8 @@ export const revenueCatService = {
         logger.info(`RevenueCat initialized for iOS (${maskKey(iosApiKey)})`);
       }
 
+      this._isInitialized = true;
+
       // Set up listener for customer info updates
       this.setupCustomerInfoListener();
     } catch (e) {
@@ -76,6 +85,10 @@ export const revenueCatService = {
    * This allows the app to react to entitlement changes in real-time
    */
   setupCustomerInfoListener() {
+    if (this._isListenerAttached) {
+      return;
+    }
+
     try {
       Purchases.addCustomerInfoUpdateListener((customerInfo) => {
         const hasPro = this.checkEntitlement(customerInfo);
@@ -84,9 +97,19 @@ export const revenueCatService = {
           entitlementId: ENTITLEMENT_ID,
           updatedAt: new Date().toISOString(),
         });
-        // The consuming component (e.g., useAuth hook) can listen for this
-        // by calling getCustomerInfo() or by using their own listener
+
+        // Trigger global sync to Supabase and UI
+        // Use dynamic import to avoid circular dependency with hooks/useAuth
+        const { useAuth } = require("../hooks/useAuth");
+        if (useAuth && useAuth.getState) {
+          useAuth
+            .getState()
+            .syncPremiumStatus(hasPro)
+            .catch((e: any) => logger.error("RC Listener Sync Error:", e));
+        }
       });
+
+      this._isListenerAttached = true;
     } catch (e) {
       logger.error("Error setting up customer info listener:", e);
     }

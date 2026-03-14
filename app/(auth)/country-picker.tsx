@@ -54,7 +54,16 @@ export default function CountryPicker() {
     >
       <View style={{ flex: 1, paddingTop: insets.top }}>
         <View className="px-5 pt-8 pb-5">
-          <TouchableOpacity onPress={() => router.back()} className="mb-5 w-10">
+          <TouchableOpacity
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(auth)/role-picker");
+              }
+            }}
+            className="mb-5 w-10"
+          >
             <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
           </TouchableOpacity>
 
@@ -69,7 +78,11 @@ export default function CountryPicker() {
             Pick your country 📍
           </Text>
           <Text
-            style={{ fontFamily: "Inter_400Regular", fontSize: 15, color: "#666" }}
+            style={{
+              fontFamily: "Inter_400Regular",
+              fontSize: 15,
+              color: "#666",
+            }}
           >
             We use this to personalize conversation context.
           </Text>
@@ -94,7 +107,9 @@ export default function CountryPicker() {
                   </Text>
                   <Text
                     style={{
-                      fontFamily: isSelected ? "Inter_500Medium" : "Inter_500Medium",
+                      fontFamily: isSelected
+                        ? "Inter_500Medium"
+                        : "Inter_500Medium",
                       fontSize: 16,
                       color: "#1a1a2e",
                     }}
