@@ -429,18 +429,34 @@ export const useAuth = create<AuthState>((set, get) => ({
             prof.user_id === "af2c2707-6887-4638-89f4-34509747514b" || // Native Testing UID
             user?.email === "harsh@moodmateai.com";
 
-          set({
-            profile: prof as Profile,
-            onboarded: (prof.onboarded as boolean) ?? false,
-            role: prof.role,
-            country: prof.country,
-            language: prof.language,
-            avatar_url: prof.avatar_url,
-            push_token: prof.push_token,
-            // Use DB value immediately, RC will update asynchronously if needed
-            isPremium: (prof.is_premium as boolean) === true,
-            isAdmin,
-          });
+          const currentState = get();
+          const nextOnboarded = (prof.onboarded as boolean) ?? false;
+          const nextIsPremium = (prof.is_premium as boolean) === true;
+
+          if (
+            currentState.profile?.id !== (prof as Profile).id ||
+            currentState.onboarded !== nextOnboarded ||
+            currentState.role !== prof.role ||
+            currentState.country !== prof.country ||
+            currentState.language !== prof.language ||
+            currentState.avatar_url !== prof.avatar_url ||
+            currentState.push_token !== prof.push_token ||
+            currentState.isPremium !== nextIsPremium ||
+            currentState.isAdmin !== isAdmin
+          ) {
+            set({
+              profile: prof as Profile,
+              onboarded: nextOnboarded,
+              role: prof.role,
+              country: prof.country,
+              language: prof.language,
+              avatar_url: prof.avatar_url,
+              push_token: prof.push_token,
+              // Use DB value immediately, RC will update asynchronously if needed
+              isPremium: nextIsPremium,
+              isAdmin,
+            });
+          }
 
           // ── Realtime Profile Subscription ─────────────────────
           // This makes the app "alive" — any change in Supabase dashboard
@@ -480,6 +496,24 @@ export const useAuth = create<AuthState>((set, get) => ({
                       "af2c2707-6887-4638-89f4-34509747514b" ||
                     user?.email === "harsh@moodmateai.com";
 
+                  const currentState = get();
+                  const nextIsPremium = updatedProf.is_premium === true;
+
+                  // Guard: avoid set() when computed top-level state is unchanged.
+                  if (
+                    currentState.profile?.id === updatedProf.id &&
+                    currentState.onboarded === updatedProf.onboarded &&
+                    currentState.role === updatedProf.role &&
+                    currentState.country === updatedProf.country &&
+                    currentState.language === updatedProf.language &&
+                    currentState.avatar_url === updatedProf.avatar_url &&
+                    currentState.push_token === updatedProf.push_token &&
+                    currentState.isPremium === nextIsPremium &&
+                    currentState.isAdmin === updatedIsAdmin
+                  ) {
+                    return;
+                  }
+
                   set({
                     profile: updatedProf,
                     onboarded: updatedProf.onboarded,
@@ -488,10 +522,7 @@ export const useAuth = create<AuthState>((set, get) => ({
                     language: updatedProf.language,
                     avatar_url: updatedProf.avatar_url,
                     push_token: updatedProf.push_token,
-                    // Use CURRENT isPremium state OR the new database value.
-                    // This prevents stale closure variables from overriding a newer RC state.
-                    isPremium:
-                      get().isPremium || updatedProf.is_premium === true,
+                    isPremium: nextIsPremium,
                     isAdmin: updatedIsAdmin,
                   });
                 }
@@ -886,25 +917,31 @@ export const useAuth = create<AuthState>((set, get) => ({
         isPro = revenueCatService.checkEntitlement(info);
       }
 
-      // 2. GUARD: Don't update if DB already matches
-      if (profile && profile.is_premium === isPro) {
-        logger.info("Auth: Premium Status already matches DB, skipping sync.");
-        set({ isPremium: isPro });
+      const currentlyPremium = get().isPremium;
+      const dbPremium = profile?.is_premium === true;
+
+      // 2. GUARD: No state/DB change needed
+      if (isPro === currentlyPremium && isPro === dbPremium) {
+        logger.info("Auth: Premium state already in sync, skipping update.");
         return;
       }
 
       logger.info(`Auth: Syncing Premium Status to DB: ${isPro}`);
 
-      // 3. Optimistic update
-      set({ isPremium: isPro });
+      // 3. Optimistic state update only if changed
+      if (isPro !== currentlyPremium) {
+        set({ isPremium: isPro });
+      }
 
-      // 4. Persist to DB
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_premium: isPro })
-        .eq("user_id", user.id);
+      // 4. Persist to DB only if changed
+      if (isPro !== dbPremium) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ is_premium: isPro })
+          .eq("user_id", user.id);
 
-      if (error) throw error;
+        if (error) throw error;
+      }
       logger.info("Auth: Premium Status synced successfully");
     } catch (e) {
       logger.error("Auth: Premium Sync Error:", e);

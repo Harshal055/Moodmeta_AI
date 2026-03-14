@@ -153,6 +153,7 @@ export default function ChatScreen() {
   const trackedSessionUserRef = useRef<string | null>(null);
   const hasLoadedInitialHistoryForUserRef = useRef<string | null>(null);
   const lastForegroundRefreshAtRef = useRef(0);
+  const appStateRef = useRef(AppState.currentState);
   const isLoadingHistoryRef = useRef(false);
   const greetingInsertedRef = useRef(false);
   const hasHydratedCacheRef = useRef(false);
@@ -170,6 +171,7 @@ export default function ChatScreen() {
   const userRole = profile?.role || "default";
   const userLanguage = profile?.language || "Hinglish";
   const isPremium = useAuth((s) => s.isPremium);
+  const isIOS = Platform.OS === "ios";
   const chatBottomOffset = Math.max(
     insets.bottom,
     Platform.OS === "android" ? 12 : 0,
@@ -319,7 +321,14 @@ export default function ChatScreen() {
                 ...msg,
                 createdAt: new Date(msg.createdAt),
               }));
-            setMessages(hydratedMessages);
+            const prevMsgs = messagesRef.current;
+            const sameAsCurrent =
+              prevMsgs.length === hydratedMessages.length &&
+              prevMsgs.every((m, i) => m._id === hydratedMessages[i]?._id);
+
+            if (!sameAsCurrent) {
+              setMessages(hydratedMessages);
+            }
             setIsLoadingHistory(false);
           }
           hasHydratedCacheRef.current = true;
@@ -590,6 +599,9 @@ export default function ChatScreen() {
   // ── AppState: refresh history when app returns to foreground ────────
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const prevAppState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
       if (nextAppState === "background") {
         logger.info("Chat: App moved to background.");
         // Schedule mood-aware re-engagement notification for Pro users
@@ -599,7 +611,10 @@ export default function ChatScreen() {
             lastMoodContextRef.current,
           ).catch(() => {});
         }
-      } else if (nextAppState === "active") {
+      } else if (
+        nextAppState === "active" &&
+        (prevAppState === "background" || prevAppState === "inactive")
+      ) {
         const now = Date.now();
         if (now - lastForegroundRefreshAtRef.current < 1500) {
           return;
@@ -670,8 +685,14 @@ export default function ChatScreen() {
               .from("chats")
               .delete()
               .eq("id", newMsg.id)
-              .then(() => {})
-              .catch(() => {});
+              .then(({ error }) => {
+                if (error) {
+                  logger.warn(
+                    "Failed to clean realtime placeholder row:",
+                    error.message,
+                  );
+                }
+              });
             return;
           }
 
@@ -1379,9 +1400,9 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={isIOS ? "padding" : "height"}
       style={{ flex: 1 }}
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={isIOS ? 0 : insets.bottom}
     >
       <View className="flex-1 bg-[#F8FBFF]">
         {/* Header */}
@@ -1678,7 +1699,7 @@ export default function ChatScreen() {
           bottomOffset={chatBottomOffset}
           placeholder="Type a message..."
           alwaysShowSend
-          isKeyboardInternallyHandled
+          isKeyboardInternallyHandled={isIOS}
           listViewProps={{
             keyboardShouldPersistTaps: "handled",
           }}

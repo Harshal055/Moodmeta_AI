@@ -18,6 +18,23 @@ export interface CoachingTip {
   content: string;
 }
 
+export interface BadgeMilestone {
+  id: string;
+  name: string;
+  icon: string;
+  threshold: number;
+}
+
+const BADGE_MILESTONES: BadgeMilestone[] = [
+  { id: "starter", name: "Early Bird", icon: "🌱", threshold: 50 },
+  { id: "steady", name: "Steady Heart", icon: "💗", threshold: 120 },
+  { id: "zen", name: "Zen Master", icon: "🧘", threshold: 200 },
+  { id: "uplift", name: "Uplifter", icon: "🌤️", threshold: 320 },
+  { id: "healer", name: "Soul Healer", icon: "✨", threshold: 500 },
+  { id: "anchor", name: "Calm Anchor", icon: "⚓", threshold: 750 },
+  { id: "radiant", name: "Radiant Spirit", icon: "🌟", threshold: 1000 },
+];
+
 // 14 challenges — rotates over 2 weeks so no daily repeat
 const DAILY_CHALLENGES: DailyChallenge[] = [
   {
@@ -456,16 +473,14 @@ class DashboardService {
     return streak;
   }
 
-  async getUserBadges(userId: string, preFetchedStats?: any) {
+  async getUserBadges(
+    userId: string,
+    preFetchedStats?: any,
+  ): Promise<BadgeMilestone[]> {
     const stats = preFetchedStats || (await this.getUserStats(userId));
-    const badges = [];
-    if (stats.totalKarma >= 50)
-      badges.push({ id: "starter", name: "Early Bird", icon: "🌱" });
-    if (stats.totalKarma >= 200)
-      badges.push({ id: "zen", name: "Zen Master", icon: "🧘" });
-    if (stats.totalKarma >= 500)
-      badges.push({ id: "healer", name: "Soul Healer", icon: "✨" });
-    return badges;
+    return BADGE_MILESTONES.filter(
+      (milestone) => stats.totalKarma >= milestone.threshold,
+    );
   }
 
   async getMoodHistory(userId: string) {
