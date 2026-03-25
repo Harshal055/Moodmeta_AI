@@ -18,7 +18,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
 import { logger } from "../../utils/logger";
 
-const ADMIN_EMAIL = "harsh@moodmateai.com";
+const ADMIN_EMAIL = "admin@example.com";
 
 export default function LoginScreen() {
   const router = useRouter();

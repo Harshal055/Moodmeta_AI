@@ -6,7 +6,7 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ADMIN_EMAIL = "harsh@moodmateai.com"; // YOUR ADMIN EMAIL
+const ADMIN_EMAIL = "admin@example.com"; // YOUR ADMIN EMAIL
 
 serve(async (req) => {
     // 1. Handle CORS

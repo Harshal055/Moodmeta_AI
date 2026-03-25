@@ -1,10 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { getLocales } from "expo-localization";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ImageBackground,
+  Image,
   ScrollView,
   StatusBar,
   Text,
@@ -18,33 +17,35 @@ import { logger } from "../../utils/logger";
 const roles = [
   {
     id: "friend",
-    label: "Friend",
-    image: require("../../assets/images/avatar_friend.png"),
+    label: "Supportive Listener",
+    description: "Someone to vent to and offer emotional support without judgment.",
+    icon: "heart",
+    iconColor: "#1337ec",
+    image: require("../../assets/images/avatar_friend.png"), // Reuse existing or use a placeholder if needed
   },
   {
-    id: "boyfriend",
-    label: "Boyfriend",
+    id: "boyfriend", // Keeping internal ID as boyfriend for now to match backend, but label is "Goal Motivator" in screenshot
+    label: "Goal Motivator",
+    description: "Keeps you on track, pushes you to succeed, and celebrates wins.",
+    icon: "flash",
+    iconColor: "#1337ec",
     image: require("../../assets/images/avatar_boyfriend.png"),
   },
   {
-    id: "girlfriend",
-    label: "Girlfriend",
-    image: require("../../assets/images/avatar_girlfriend.png"),
-  },
-  {
-    id: "mother",
-    label: "Mother",
+    id: "mother", // Keeping internal ID
+    label: "Wise Mentor",
+    description: "Provides thoughtful perspective and helps you solve problems.",
+    icon: "book",
+    iconColor: "#1337ec",
     image: require("../../assets/images/avatar_mother.png"),
   },
   {
-    id: "father",
-    label: "Father",
-    image: require("../../assets/images/avatar_father.png"),
-  },
-  {
-    id: "custom",
-    label: "Custom",
-    image: null,
+    id: "girlfriend", // Keeping internal ID
+    label: "Playful Friend",
+    description: "Lighthearted chat, jokes, and casual companionship.",
+    icon: "happy",
+    iconColor: "#1337ec",
+    image: require("../../assets/images/avatar_girlfriend.png"),
   },
 ];
 
@@ -72,10 +73,10 @@ export default function RolePicker() {
   }, []);
 
   return (
-    <View className="flex-1 bg-[#f6f6f8]">
-      <StatusBar barStyle="dark-content" />
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
-      {/* Top Bar matching HTML design */}
+      {/* Top Bar matching screenshot */}
       <View
         style={{
           paddingTop: insets.top + 16,
@@ -111,195 +112,230 @@ export default function RolePicker() {
             fontFamily: "Inter_700Bold",
             fontSize: 18,
             color: "#0f172a",
-            letterSpacing: -0.5,
           }}
         >
-          Companion Selection
+          Companion Setup
         </Text>
       </View>
 
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 160 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header matching HTML */}
-        <View
-          style={{ paddingHorizontal: 24, paddingTop: 32, paddingBottom: 16 }}
-        >
+        {/* Header */}
+        <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 }}>
           <Text
             style={{
-              fontFamily: "Inter_800ExtraBold",
-              fontSize: 30,
+              fontFamily: "Rosehot",
+              fontSize: 36,
               color: "#0f172a",
-              lineHeight: 38,
-              letterSpacing: -0.5,
               marginBottom: 8,
+              letterSpacing: -0.5,
+              lineHeight: 44,
             }}
           >
-            Who do you need{"\n"}with you today?
+            Choose Role
           </Text>
           <Text
             style={{
-              fontFamily: "Inter_500Medium",
-              fontSize: 14,
+              fontFamily: "Inter_400Regular",
+              fontSize: 15,
               color: "#64748b",
+              lineHeight: 22,
             }}
           >
-            Choose the persona that fits your current mood or needs.
+            Select how you'd like your companion to interact with you today.
           </Text>
         </View>
 
-        {/* Role Cards Grid */}
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            padding: 16,
-            justifyContent: "space-between",
-          }}
-        >
+        {/* Role Cards List */}
+        <View style={{ paddingHorizontal: 24, gap: 16 }}>
           {roles.map((role) => {
             const isSelected = selectedRole === role.id;
             return (
-              <TouchableOpacity
+              <View
                 key={role.id}
-                onPress={() => {
-                  if (role.id === "custom" && !isPremium) {
-                    router.push("/(modals)/paywall");
-                    return;
-                  }
-                  setSelectedRole(role.id);
-                }}
-                activeOpacity={0.9}
                 style={{
-                  width: "48%",
-                  aspectRatio: 4 / 5,
-                  marginBottom: 16,
-                  borderRadius: 16,
-                  borderWidth: 2,
+                  borderWidth: 1.5,
                   borderColor: isSelected ? "#1337ec" : "#f1f5f9",
-                  overflow: "hidden",
+                  borderRadius: 20,
                   backgroundColor: "#fff",
+                  padding: 16,
+                  shadowColor: isSelected ? "#1337ec" : "transparent",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 12,
+                  elevation: isSelected ? 4 : 0,
                 }}
               >
-                {role.image ? (
-                  <ImageBackground
-                    source={role.image}
-                    resizeMode="cover"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      justifyContent: "flex-end",
-                      padding: 12,
-                    }}
-                    imageStyle={{ borderRadius: 14 }}
-                  >
-                    <LinearGradient
-                      colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.8)"]}
-                      style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: "65%",
-                        borderRadius: 14,
-                      }}
-                    />
-                    <Text
-                      style={{
-                        fontFamily: "Inter_700Bold",
-                        fontSize: 18,
-                        color: "#fff",
-                        zIndex: 10,
-                      }}
-                    >
-                      {role.label}
-                    </Text>
-
-                    {isSelected && (
-                      <View
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
+                  <View style={{ flex: 1, paddingRight: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <Ionicons name={role.icon as any} size={20} color={role.iconColor} />
+                      <Text
                         style={{
-                          position: "absolute",
-                          top: 12,
-                          right: 12,
-                          zIndex: 10,
+                          fontFamily: "Inter_700Bold",
+                          fontSize: 17,
+                          color: "#0f172a",
                         }}
                       >
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={24}
-                          color="#fff"
-                        />
-                      </View>
-                    )}
-                  </ImageBackground>
-                ) : (
-                  <View
-                    style={{
-                      flex: 1,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "#f8fafc",
-                    }}
-                  >
-                    <View
-                      style={{
-                        backgroundColor: "rgba(19, 55, 236, 0.1)",
-                        borderRadius: 999,
-                        padding: 16,
-                        marginBottom: 12,
-                      }}
-                    >
-                      {role.id === "custom" && !isPremium ? (
-                        <Ionicons
-                          name="lock-closed"
-                          size={32}
-                          color="#1337ec"
-                        />
-                      ) : (
-                        <Ionicons name="add" size={32} color="#1337ec" />
-                      )}
+                        {role.label}
+                      </Text>
                     </View>
                     <Text
                       style={{
-                        fontFamily: "Inter_700Bold",
-                        fontSize: 18,
-                        color: "#0f172a",
-                        textAlign: "center",
-                        paddingHorizontal: 8,
+                        fontFamily: "Inter_400Regular",
+                        fontSize: 13,
+                        color: "#64748b",
+                        lineHeight: 20,
                       }}
                     >
-                      {role.id === "custom" && !isPremium
-                        ? "Pro\nCustom"
-                        : "Create\nCustom"}
+                      {role.description}
                     </Text>
-
-                    {isSelected && (
-                      <View
-                        style={{
-                          position: "absolute",
-                          top: 12,
-                          right: 12,
-                          zIndex: 10,
-                        }}
-                      >
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={24}
-                          color="#1337ec"
-                        />
-                      </View>
-                    )}
                   </View>
-                )}
-              </TouchableOpacity>
+                  <View>
+                    <Image
+                      source={role.image}
+                      style={{ width: 80, height: 80, borderRadius: 12 }}
+                      resizeMode="cover"
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedRole(role.id)}
+                  activeOpacity={0.7}
+                  style={{
+                    backgroundColor: isSelected ? "#1337ec" : "#f8fafc",
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Inter_600SemiBold",
+                      fontSize: 15,
+                      color: isSelected ? "#fff" : "#0f172a",
+                    }}
+                  >
+                    Select Role
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={16}
+                    color={isSelected ? "#fff" : "#0f172a"}
+                  />
+                </TouchableOpacity>
+              </View>
             );
           })}
+
+          {/* Custom Role Card (Pro) */}
+          <View
+            style={{
+              borderWidth: 1.5,
+              borderColor: selectedRole === "custom" ? "#1337ec" : "#f1f5f9",
+              borderRadius: 20,
+              backgroundColor: "#fff",
+              padding: 16,
+              shadowColor: selectedRole === "custom" ? "#1337ec" : "transparent",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.1,
+              shadowRadius: 12,
+              elevation: selectedRole === "custom" ? 4 : 0,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <Ionicons name="build" size={20} color={!isPremium ? "#94a3b8" : "#1337ec"} />
+                  <Text
+                    style={{
+                      fontFamily: "Inter_700Bold",
+                      fontSize: 17,
+                      color: "#0f172a",
+                    }}
+                  >
+                    Custom Role
+                  </Text>
+                  {!isPremium && (
+                    <View style={{ backgroundColor: "#FEF08A", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 10, color: "#854D0E" }}>PRO</Text>
+                    </View>
+                  )}
+                </View>
+                <Text
+                  style={{
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 13,
+                    color: "#64748b",
+                    lineHeight: 20,
+                  }}
+                >
+                  Create a completely custom companion with tailored traits and instructions.
+                </Text>
+              </View>
+              <View
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: 12,
+                  backgroundColor: "#F8FAFC",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  borderWidth: 1,
+                  borderColor: "#E2E8F0",
+                  borderStyle: "dashed"
+                }}
+              >
+                <Ionicons name={!isPremium ? "lock-closed" : "add"} size={32} color={!isPremium ? "#94a3b8" : "#1337ec"} />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (!isPremium) {
+                  router.push("/(modals)/paywall");
+                  return;
+                }
+                setSelectedRole("custom");
+              }}
+              activeOpacity={0.7}
+              style={{
+                backgroundColor: selectedRole === "custom" ? "#1337ec" : "#f8fafc",
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: "center",
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Inter_600SemiBold",
+                  fontSize: 15,
+                  color: selectedRole === "custom" ? "#fff" : "#0f172a",
+                }}
+              >
+                {!isPremium ? "Unlock Custom Role" : "Select Role"}
+              </Text>
+              <Ionicons
+                name={!isPremium ? "lock-closed" : "arrow-forward"}
+                size={16}
+                color={selectedRole === "custom" || !isPremium ? (selectedRole === "custom" ? "#fff" : "#0f172a") : "#0f172a"}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
-      {/* Footer Area with Button and Indicator */}
+      {/* Footer Area with Button */}
       <View
         style={{
           position: "absolute",
@@ -307,17 +343,18 @@ export default function RolePicker() {
           left: 0,
           right: 0,
           paddingHorizontal: 24,
-          paddingBottom: insets.bottom + 32,
-          paddingTop: 24,
-          backgroundColor: "#f6f6f8",
+          paddingBottom: insets.bottom + 20,
+          paddingTop: 16,
+          backgroundColor: "#fff",
           borderTopWidth: 1,
-          borderColor: "rgba(0,0,0,0.05)",
+          borderColor: "#f1f5f9",
         }}
       >
         <TouchableOpacity
           disabled={!selectedRole}
           onPress={async () => {
             if (!selectedRole) return;
+            // Match the inferred logic from original
             const locale = getLocales()[0];
             const regionCode = locale?.regionCode?.toUpperCase?.() || "";
             const inferredCountry = REGION_TO_COUNTRY[regionCode] || "India";
@@ -325,33 +362,40 @@ export default function RolePicker() {
               role: selectedRole,
               country: inferredCountry,
             });
+            // Update the next step in flow (it used to be language-picker, but often it goes to name-companion now based on typical flows)
+            // Sticking to language-picker as that is what the original code did
             router.push("/(auth)/language-picker");
           }}
           activeOpacity={0.8}
           style={{
-            backgroundColor: selectedRole ? "#1337ec" : "#cbd5e1",
-            borderRadius: 12,
-            height: 57,
+            backgroundColor: selectedRole ? "#1337ec" : "#e2e8f0",
+            borderRadius: 16,
+            height: 56,
             justifyContent: "center",
             alignItems: "center",
+            flexDirection: "row",
+            gap: 8,
             shadowColor: selectedRole ? "#1337ec" : "transparent",
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.3,
             shadowRadius: 8,
             elevation: selectedRole ? 8 : 0,
-            marginBottom: 10,
           }}
         >
           <Text
             style={{
               fontFamily: "Inter_700Bold",
               fontSize: 16,
-              color: "#fff",
-              letterSpacing: 0.5,
+              color: selectedRole ? "#fff" : "#94a3b8",
             }}
           >
-            Continue Selection
+            Continue
           </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={selectedRole ? "#fff" : "#94a3b8"}
+          />
         </TouchableOpacity>
       </View>
     </View>

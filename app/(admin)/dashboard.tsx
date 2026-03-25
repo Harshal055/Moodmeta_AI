@@ -152,7 +152,7 @@ export default function AdminDashboard() {
         // Wait for auth to fully initialize before making decisions
         if (isAuthLoading || !currentUser) return;
 
-        if (currentUser.email !== "harsh@moodmateai.com") {
+        if (currentUser.email !== "admin@example.com") {
             router.replace("/(main)/settings");
             return;
         }

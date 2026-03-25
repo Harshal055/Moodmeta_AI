@@ -7,6 +7,7 @@ export default function MainLayout() {
     <View style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="dashboard" />
+        <Stack.Screen name="leaderboard" />
         <Stack.Screen name="chat" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="settings" />

@@ -5,43 +5,27 @@ import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Purchases from "react-native-purchases";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import BottomNav from "../../components/BottomNav";
 import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../lib/supabase";
-import { isFeatureEnabled } from "../../utils/featureFlags";
 import { logger } from "../../utils/logger";
-import { getMoodAnalytics } from "../../utils/moodAnalytics";
-import {
-  getRecommendedResources
-} from "../../utils/wellnessResources";
 
-const PRIVACY_POLICY_URL =
-  "https://harshal055.github.io/moodmateai-site/";
-const TERMS_OF_SERVICE_URL =
-  "https://harshal055.github.io/moodmateai-site/";
-
-const COMPANION_AVATARS: Record<string, any> = {
-  friend: require("../../assets/images/avatar_friend.png"),
-  boyfriend: require("../../assets/images/avatar_boyfriend.png"),
-  girlfriend: require("../../assets/images/avatar_girlfriend.png"),
-  mother: require("../../assets/images/avatar_mother.png"),
-  father: require("../../assets/images/avatar_father.png"),
-  default: require("../../assets/images/logo.png"),
-};
+const PRIVACY_POLICY_URL = "https://harshal055.github.io/moodmateai-site/";
+const TERMS_OF_SERVICE_URL = "https://harshal055.github.io/moodmateai-site/";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -49,56 +33,77 @@ export default function SettingsScreen() {
   const user = useAuth((s) => s.currentUser);
   const profile = useAuth((s) => s.profile);
   const isPremium = useAuth((s) => s.isPremium);
-  const isAdmin = useAuth((s) => s.isAdmin);
   const signOut = useAuth((s) => s.signOut);
+
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isSignOutInProgress, setIsSignOutInProgress] = useState(false);
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
-  const [isClearingChat, setIsClearingChat] = useState(false);
-  const [moodAnalytics, setMoodAnalytics] = useState<any>(null);
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
-  const [wellnessResources, setWellnessResources] = useState<any[]>([]);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [logoutModalType, setLogoutModalType] = useState<"anonymous" | "normal" | null>(null);
-  const [showAnonymousPrompt, setShowAnonymousPrompt] = useState(false);
+
+  // Feedback modal states
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
+
+  // Account action states
+  const [isClearingChat, setIsClearingChat] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   useEffect(() => {
     logger.info("SCREEN_VIEW: Settings");
   }, []);
 
-  // Check if user dismissed the prompt before
-  useEffect(() => {
-    async function checkPrompt() {
-      if (user?.is_anonymous && user?.id) {
-        const dismissed = await AsyncStorage.getItem(`dismissed_anonymous_prompt_${user.id}`);
-        if (!dismissed) setShowAnonymousPrompt(true);
-      } else {
-        setShowAnonymousPrompt(false);
-      }
-    }
-    checkPrompt();
-  }, [user?.id, user?.is_anonymous]);
+  // Compute display name from profile or user metadata
+  const displayName =
+    (user?.user_metadata?.full_name as string) ||
+    (user?.user_metadata?.name as string) ||
+    profile?.companion_name ||
+    user?.email?.split("@")[0] ||
+    "You";
 
-  const handleDismissPrompt = async () => {
-    if (!user?.id) return;
-    setShowAnonymousPrompt(false);
-    await AsyncStorage.setItem(`dismissed_anonymous_prompt_${user.id}`, "true");
+  const handleSignOut = async () => {
+    setIsSignOutInProgress(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await signOut();
+      router.replace("/(auth)/welcome");
+    } catch (error) {
+      Alert.alert("Error", "Failed to log out. Please try again.");
+    } finally {
+      setIsSignOutInProgress(false);
+    }
+  };
+
+  const handleSendFeedback = async () => {
+    if (!feedbackMessage.trim() || !user?.id) return;
+    setIsSendingFeedback(true);
+    try {
+      const { error } = await supabase.from("feedback").insert({
+        user_id: user.id,
+        message: feedbackMessage,
+      });
+      if (error) throw error;
+      Alert.alert("Thank you!", "Your feedback has been received.");
+      setShowFeedbackModal(false);
+      setFeedbackMessage("");
+    } catch (error) {
+      logger.error("Error sending feedback:", error);
+      Alert.alert("Error", "Could not send feedback. Please try again.");
+    } finally {
+      setIsSendingFeedback(false);
+    }
   };
 
   const handleRestorePurchases = async () => {
     setIsRestoringPurchases(true);
     try {
-      const purchases = await Purchases.restorePurchases();
-      const hasPurchases =
-        Object.values(purchases.activeSubscriptions || {}).length > 0 ||
-        Object.values(purchases.nonSubscriptionTransactions || {})
-          .length > 0;
-
-      if (hasPurchases) {
-        Alert.alert("Success", "Your purchases have been restored! 🎉");
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const customerInfo = await Purchases.restorePurchases();
+      const entitlements = customerInfo?.entitlements?.active;
+      const hasPro = entitlements && Object.keys(entitlements).length > 0;
+      if (hasPro) {
+        Alert.alert("Purchases Restored", "Your premium subscription has been restored successfully!");
       } else {
-        Alert.alert("No Purchases", "No previous purchases found to restore.");
+        Alert.alert("No Purchases Found", "We couldn't find any active purchases linked to this account.");
       }
     } catch (error) {
       logger.error("Error restoring purchases:", error);
@@ -108,1282 +113,492 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleManageSubscription = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // On iOS, opens the App Store subscription manager
+      // On Android, opens Google Play subscription page
+      if (Platform.OS === "ios") {
+        await Linking.openURL("https://apps.apple.com/account/subscriptions");
+      } else {
+        await Linking.openURL(
+          "https://play.google.com/store/account/subscriptions?package=com.harshal.moodmateai"
+        );
+      }
+    } catch (error) {
+      logger.error("Error opening subscription management:", error);
+      Alert.alert("Error", "Could not open subscription management.");
+    }
+  };
+
   const handleClearChatHistory = () => {
+    if (!user?.id) return;
     Alert.alert(
       "Clear Chat History",
-      "This will delete all your chats with " +
-      (profile?.companion_name || "your companion") +
-      ". Your companion will remember you, but the conversation history will be gone.",
+      "Are you sure you want to delete all messages with your companion? This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Clear History",
+          text: "Clear",
           style: "destructive",
           onPress: async () => {
-            if (!user) return;
             setIsClearingChat(true);
             try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              // Delete all chats but keep the profile
               await supabase.from("chats").delete().eq("user_id", user.id);
-              Alert.alert("Success", "Chat history cleared! 🧹");
-            } catch (e: any) {
-              logger.error("Error clearing chat history", e);
-              Alert.alert("Error", "Could not clear chat history. Try again.");
+              await AsyncStorage.removeItem(`chat_history_${user.id}`);
+              Alert.alert("Done", "Chat history cleared successfully.");
+            } catch (error) {
+              logger.error("Error clearing chat history", error);
+              Alert.alert("Error", "Could not clear chat history.");
             } finally {
               setIsClearingChat(false);
             }
           },
         },
-      ],
+      ]
     );
   };
 
-  // Load mood analytics and wellness resources for Pro users
-  const loadProFeatures = async () => {
-    if (!user?.id || !isPremium) return;
+  const handleDeleteAccount = () => {
+    if (!user?.id) return;
+    Alert.alert(
+      "Delete Account",
+      "Are you absolutely sure? This permanently deletes your account, all mood logs, chat history and cancels your subscription. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete My Account",
+          style: "destructive",
+          onPress: async () => {
+            setIsDeletingAccount(true);
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              const { error } = await supabase.functions.invoke("delete-user");
+              if (error) throw error;
+              await signOut();
+              router.replace("/(auth)/welcome");
+            } catch (error) {
+              logger.error("Error deleting account", error);
+              Alert.alert(
+                "Action Required",
+                "To fully delete your account, please email us from your registered address.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Email Support",
+                    onPress: () =>
+                      Linking.openURL(
+                        `mailto:support@moodmateai.com?subject=Account Deletion Request&body=Please delete my account: ${user?.email}`
+                      ),
+                  },
+                ]
+              );
+            } finally {
+              setIsDeletingAccount(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
-    try {
-      setLoadingAnalytics(true);
-
-      // Load mood analytics if enabled
-      if (isFeatureEnabled("moodAnalytics", isPremium)) {
-        const analytics = await getMoodAnalytics(user.id);
-        setMoodAnalytics(analytics);
-      }
-
-      // Load wellness resources if enabled
-      if (isFeatureEnabled("wellnessResources", isPremium)) {
-        // Get recommended resources based on mood
-        const recommended = getRecommendedResources("stressed");
-        setWellnessResources(recommended || []);
-      }
-    } catch (error) {
-      logger.error("Error loading Pro features:", error);
-    } finally {
-      setLoadingAnalytics(false);
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(main)/dashboard" as any);
     }
   };
 
-  // Load Pro features when component mounts or user changes
-  useEffect(() => {
-    loadProFeatures();
-  }, [user?.id, isPremium]);
+  const SettingRow = ({
+    icon,
+    label,
+    subtitle,
+    onPress,
+    rightElement,
+    iconColor = "#475569",
+    labelColor = "#0f172a",
+    disabled = false,
+  }: {
+    icon: any;
+    label: string;
+    subtitle?: string;
+    onPress?: () => void;
+    rightElement?: React.ReactNode;
+    iconColor?: string;
+    labelColor?: string;
+    disabled?: boolean;
+  }) => (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled || !onPress}
+      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingVertical: 14, opacity: disabled ? 0.6 : 1 }}
+    >
+      <View style={{ width: 20, alignItems: "center" }}>
+        <Ionicons name={icon} size={20} color={iconColor} />
+      </View>
+      <View style={{ flex: 1, paddingHorizontal: 16 }}>
+        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: labelColor, marginBottom: subtitle ? 2 : 0 }}>{label}</Text>
+        {subtitle ? <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#64748b" }}>{subtitle}</Text> : null}
+      </View>
+      {rightElement !== undefined ? rightElement : <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />}
+    </TouchableOpacity>
+  );
+
+  const SectionTitle = ({ title }: { title: string }) => (
+    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: "#94A3B8", letterSpacing: 1.5, paddingHorizontal: 24, paddingBottom: 12, paddingTop: 28 }}>
+      {title}
+    </Text>
+  );
 
   return (
-    <View className="flex-1 bg-[#F8FBFF]">
+    <View style={{ flex: 1, backgroundColor: "#F8F9FA" }}>
+      {/* Header */}
       <View
         style={{
-          paddingTop: insets.top + 20,
-          paddingHorizontal: 20,
+          paddingTop: insets.top + 16,
+          paddingHorizontal: 24,
           paddingBottom: 20,
           flexDirection: "row",
           alignItems: "center",
+          justifyContent: "space-between",
         }}
       >
-        <TouchableOpacity
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(main)/dashboard");
-            }
-          }}
-          className="mr-4"
-        >
-          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
+        <TouchableOpacity onPress={goBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="arrow-back" size={24} color="#0f172a" />
         </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: "Manrope_700Bold",
-            fontSize: 24,
-            color: "#1a1a2e",
-          }}
-        >
-          Settings
-        </Text>
+        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#0f172a" }}>Settings</Text>
+        <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView
-        className="flex-1 px-5 pt-4"
-        contentContainerStyle={{ paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Companion Summary Card */}
-        {profile && (
-          <View
-            style={{
-              backgroundColor: "#FF6B9D",
-              borderRadius: 24,
-              padding: 24,
-              marginBottom: 24,
-              shadowColor: "#FF6B9D",
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.25,
-              shadowRadius: 15,
-              elevation: 8,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.3)", overflow: "hidden" }}>
-                <Image
-                  source={profile.avatar_url ? { uri: profile.avatar_url } : (COMPANION_AVATARS[profile.role || "default"] || COMPANION_AVATARS.default)}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="cover"
-                />
-              </View>
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_800ExtraBold",
-                    fontSize: 22,
-                    color: "white",
-                  }}
-                >
-                  {profile.companion_name || "Your Companion"}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Inter_600SemiBold",
-                    fontSize: 14,
-                    color: "rgba(255,255,255,0.9)",
-                    marginTop: 2,
-                  }}
-                >
-                  {profile.role || "Friend"} • {profile.language || "English"}
-                </Text>
-              </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+        {/* Profile Card */}
+        <View style={{ paddingHorizontal: 24, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+            <Image
+              source={
+                profile?.avatar_url
+                  ? { uri: profile.avatar_url }
+                  : require("../../assets/images/logo.png")
+              }
+              style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "#EBEAFC" }}
+            />
+            <View style={{ marginLeft: 16, flex: 1 }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: "#0f172a", marginBottom: 2 }}>
+                {displayName}
+              </Text>
+              <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#4F46E5" }} numberOfLines={1}>
+                {user?.email || ""}
+              </Text>
               {isPremium && (
-                <View style={{ backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 }}>
-                  <Ionicons name="star" size={14} color="white" />
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+                  <Ionicons name="star" size={12} color="#F59E0B" />
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: "#F59E0B", marginLeft: 4 }}>PREMIUM</Text>
                 </View>
               )}
             </View>
-
-            <TouchableOpacity
-              style={{
-                backgroundColor: "rgba(255,255,255,0.2)",
-                borderRadius: 16,
-                paddingVertical: 12,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.3)",
-              }}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                if (!isPremium) {
-                  router.push("/(modals)/paywall");
-                } else {
-                  router.push("/(auth)/role-picker");
-                }
-              }}
-            >
-              <Ionicons name={isPremium ? "create-outline" : "lock-closed"} size={18} color="white" />
-              <Text
-                style={{
-                  fontFamily: "Manrope_700Bold",
-                  fontSize: 14,
-                  color: "white",
-                  marginLeft: 8,
-                }}
-              >
-                {isPremium ? "Change Companion" : "Pro: Change Companion"}
-              </Text>
-            </TouchableOpacity>
           </View>
-        )}
-
-        {/* Anonymous Warning Banner */}
-        {showAnonymousPrompt && user?.is_anonymous && (
-          <View
-            style={{
-              backgroundColor: "#FFF9E6",
-              borderRadius: 20,
-              padding: 24,
-              marginBottom: 32,
-              borderWidth: 1,
-              borderColor: "#FEF3C7",
-              position: "relative",
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.05,
-              shadowRadius: 10,
-              elevation: 2,
-            }}
+          <TouchableOpacity
+            onPress={() => router.push("/(main)/profile" as any)}
+            style={{ backgroundColor: "#EEECFE", alignSelf: "flex-start", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 }}
           >
-            <TouchableOpacity
-              onPress={handleDismissPrompt}
-              style={{ position: "absolute", right: 16, top: 16, padding: 4, zIndex: 10 }}
-            >
-              <Ionicons name="close" size={22} color="#92400E" />
-            </TouchableOpacity>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#4F46E5" }}>Edit Profile</Text>
+          </TouchableOpacity>
+        </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="shield-checkmark" size={26} color="#92400E" />
-              </View>
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_800ExtraBold",
-                    fontSize: 18,
-                    color: "#92400E",
-                  }}
-                >
-                  Backup your data
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 12,
-                    color: "#B45309",
-                  }}
-                >
-                  Highly recommended
-                </Text>
-              </View>
-            </View>
-            <Text
-              style={{
-                fontFamily: "Inter_400Regular",
-                fontSize: 14,
-                color: "#92400E",
-                lineHeight: 22,
-                marginBottom: 20,
-              }}
-            >
-              You're currently in Guest Mode. Link your account to sync your chats and mood insights across all your devices!
-            </Text>
-            <TouchableOpacity
-              style={{
-                backgroundColor: "#92400E",
-                borderRadius: 16,
-                paddingVertical: 14,
-                alignItems: "center",
-                shadowColor: "#92400E",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
-                shadowRadius: 8,
-              }}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(modals)/link-account");
-              }}
-            >
-              <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 15, color: "white" }}>Link My Account Now</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Premium Section */}
-        <Text
-          style={{
-            fontFamily: "Inter_500Medium",
-            fontSize: 13,
-            color: "#999",
-            marginBottom: 12,
-            marginLeft: 12,
-          }}
-        >
-          SUBSCRIPTION
-        </Text>
-
-        {/* Pro Status Card (when subscribed) */}
-        {isPremium ? (
-          <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
+        {/* Premium Banner (only for free users) */}
+        {!isPremium && (
+          <View style={{ paddingHorizontal: 24, paddingTop: 24 }}>
             <View
               style={{
-                backgroundColor: "#F0FDF4",
+                backgroundColor: "#fff",
+                borderRadius: 16,
                 padding: 20,
-                borderBottomWidth: 1,
-                borderBottomColor: "#E5F5E0",
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 24,
-                      backgroundColor: "#10B981",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name="checkmark-circle" size={28} color="#fff" />
-                  </View>
-                  <View>
-                    <Text
-                      style={{
-                        fontFamily: "Manrope_700Bold",
-                        fontSize: 18,
-                        color: "#065F46",
-                      }}
-                    >
-                      MoodMate Pro
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: "Inter_400Regular",
-                        fontSize: 12,
-                        color: "#10B981",
-                        marginTop: 2,
-                      }}
-                    >
-                      ✨ All premium features unlocked
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  style={{
-                    backgroundColor: "#10B981",
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 12,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 11,
-                      color: "#fff",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    ACTIVE
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={{
                 flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "space-between",
-                padding: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: "#F5F5F5",
-              }}
-              onPress={() => Linking.openURL("https://play.google.com/store/account/subscriptions")}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View className="w-10 h-10 rounded-full bg-[#F0F8FF] items-center justify-center">
-                  <Ionicons name="settings-outline" size={20} color="#0066CC" />
-                </View>
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 15,
-                      color: "#1a1a2e",
-                    }}
-                  >
-                    Manage Subscription
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_400Regular",
-                      fontSize: 12,
-                      color: "#888",
-                      marginTop: 2,
-                    }}
-                  >
-                    Cancel, change plan, or billing info
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#ccc" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className="flex-row items-center justify-between p-4"
-              onPress={handleRestorePurchases}
-              disabled={isRestoringPurchases}
-            >
-              <View className="flex-row items-center gap-3 flex-1">
-                <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
-                  {isRestoringPurchases ? (
-                    <ActivityIndicator size="small" color="#7C3AED" />
-                  ) : (
-                    <Ionicons name="download-outline" size={20} color="#7C3AED" />
-                  )}
-                </View>
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 15,
-                      color: "#1a1a2e",
-                    }}
-                  >
-                    Restore Purchases
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_400Regular",
-                      fontSize: 12,
-                      color: "#888",
-                      marginTop: 2,
-                    }}
-                  >
-                    Re-sync premium on new device
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View
-            style={{
-              backgroundColor: "white",
-              borderRadius: 24,
-              borderWidth: 1,
-              borderColor: "#F0F0F0",
-              overflow: "hidden",
-              marginBottom: 32,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.05,
-              shadowRadius: 10,
-              elevation: 2,
-            }}
-          >
-            {/* Upgrade CTA */}
-            <TouchableOpacity
-              style={{
-                padding: 24,
-              }}
-              onPress={() => router.push("/(modals)/paywall")}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
-                <View
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 28,
-                    backgroundColor: "#FFF8E1",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ fontSize: 32 }}>👑</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 16 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_800ExtraBold",
-                      fontSize: 20,
-                      color: "#1a1a2e",
-                    }}
-                  >
-                    Go Premium
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 13,
-                      color: "#666",
-                      marginTop: 2,
-                    }}
-                  >
-                    All-access from ₹83/mo
-                  </Text>
-                </View>
-                <View style={{ backgroundColor: "#FDF2F8", padding: 8, borderRadius: 12 }}>
-                  <Ionicons name="chevron-forward" size={20} color="#DB2777" />
-                </View>
-              </View>
-
-              {/* Enhanced Benefits Highlight */}
-              <View style={{ marginBottom: 24 }}>
-                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#1a1a2e", marginBottom: 12 }}>PRO BENEFITS:</Text>
-                {[
-                  { icon: "chatbubbles", text: "Unlimited AI Conversations", color: "#4F46E5" },
-                  { icon: "mic", text: "Voice Messaging (AI Speaks)", color: "#7C3AED" },
-                  { icon: "stats-chart", text: "Advanced Mood Analytics", color: "#EC4899" },
-                  { icon: "brush", text: "Create Custom Companions", color: "#F59E0B" },
-                  { icon: "shield-checkmark", text: "No Advertisements, Ever", color: "#10B981" },
-                ].map((item, i) => (
-                  <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                    <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: item.color + "15", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                      <Ionicons name={item.icon as any} size={14} color={item.color} />
-                    </View>
-                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 14, color: "#444" }}>{item.text}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Primary CTA Button */}
-              <View
-                style={{
-                  backgroundColor: "#1a1a2e",
-                  borderRadius: 16,
-                  paddingVertical: 16,
-                  alignItems: "center",
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.2,
-                  shadowRadius: 8,
-                  elevation: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "Manrope_700Bold",
-                    fontSize: 16,
-                    color: "#fff",
-                  }}
-                >
-                  Unlock Everything — Save 58%
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <View style={{ height: 1, backgroundColor: "#F5F5F5" }} />
-
-            {/* Secondary Actions */}
-            <View style={{ padding: 8 }}>
-              <TouchableOpacity
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: 12,
-                }}
-                onPress={handleRestorePurchases}
-                disabled={isRestoringPurchases}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F5F3FF", alignItems: "center", justifyContent: "center" }}>
-                    {isRestoringPurchases ? (
-                      <ActivityIndicator size="small" color="#7C3AED" />
-                    ) : (
-                      <Ionicons name="refresh" size={18} color="#7C3AED" />
-                    )}
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 14,
-                      color: "#666",
-                      marginLeft: 12,
-                    }}
-                  >
-                    Restore Purchases
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="#ccc" />
-              </TouchableOpacity>
-
-              {/* Link Account - Only for Anonymous */}
-              {user?.is_anonymous && (
-                <TouchableOpacity
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: 12,
-                  }}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push("/(modals)/link-account");
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F0F9FF", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="link" size={18} color="#0EA5E9" />
-                    </View>
-                    <Text
-                      style={{
-                        fontFamily: "Inter_500Medium",
-                        fontSize: 14,
-                        color: "#666",
-                        marginLeft: 12,
-                      }}
-                    >
-                      Link Account
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color="#ccc" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Mood Analytics Section (Pro feature) */}
-        {isPremium && isFeatureEnabled("moodAnalytics", isPremium) && (
-          <>
-            <Text
-              style={{
-                fontFamily: "Inter_500Medium",
-                fontSize: 13,
-                color: "#999",
-                marginBottom: 12,
-                marginLeft: 12,
-              }}
-            >
-              MOOD ANALYTICS
-            </Text>
-
-            <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8 p-4">
-              {loadingAnalytics ? (
-                <View className="items-center justify-center py-8">
-                  <ActivityIndicator size="large" color="#FF6B9D" />
-                  <Text
-                    style={{
-                      fontFamily: "Inter_400Regular",
-                      fontSize: 12,
-                      color: "#888",
-                      marginTop: 8,
-                    }}
-                  >
-                    Loading your mood insights...
-                  </Text>
-                </View>
-              ) : moodAnalytics ? (
-                <View>
-                  <View className="mb-4">
-                    <Text
-                      style={{
-                        fontFamily: "Manrope_600SemiBold",
-                        fontSize: 14,
-                        color: "#1a1a2e",
-                        marginBottom: 8,
-                      }}
-                    >
-                      📊 30-Day Mood Trend
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: "Inter_400Regular",
-                        fontSize: 12,
-                        color: "#666",
-                      }}
-                    >
-                      {moodAnalytics.improvementTrajectory || "No data yet"}
-                    </Text>
-                  </View>
-
-                  <View className="mb-4">
-                    <Text
-                      style={{
-                        fontFamily: "Manrope_600SemiBold",
-                        fontSize: 14,
-                        color: "#1a1a2e",
-                        marginBottom: 8,
-                      }}
-                    >
-                      😊 Most Common Mood
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: "Inter_500Medium",
-                        fontSize: 13,
-                        color: "#FF6B9D",
-                      }}
-                    >
-                      {moodAnalytics.mostCommonMood || "Neutral"}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity className="bg-[#FFF8E1] rounded-lg p-3 items-center">
-                    <Text
-                      style={{
-                        fontFamily: "Inter_500Medium",
-                        fontSize: 12,
-                        color: "#F59E0B",
-                      }}
-                    >
-                      View Detailed Insights
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: "#888",
-                    textAlign: "center",
-                    paddingVertical: 16,
-                  }}
-                >
-                  Start logging moods to see insights 💭
-                </Text>
-              )}
-            </View>
-          </>
-        )}
-
-        {/* Wellness Resources Section (Pro feature) */}
-        {isPremium && isFeatureEnabled("wellnessResources", isPremium) && (
-          <>
-            <Text
-              style={{
-                fontFamily: "Inter_500Medium",
-                fontSize: 13,
-                color: "#999",
-                marginBottom: 12,
-                marginLeft: 12,
-              }}
-            >
-              WELLNESS HUB
-            </Text>
-
-            <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
-              {wellnessResources.length > 0 ? (
-                wellnessResources.slice(0, 3).map((resource, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    className={`flex-row items-center justify-between p-4 ${idx < wellnessResources.slice(0, 3).length - 1
-                      ? "border-b border-[#F5F5F5]"
-                      : ""
-                      }`}
-                  >
-                    <View className="flex-row items-center gap-3 flex-1">
-                      <View className="w-10 h-10 rounded-full bg-[#F0E8FF] items-center justify-center">
-                        <Text style={{ fontSize: 18 }}>
-                          {resource.emoji || "💚"}
-                        </Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text
-                          style={{
-                            fontFamily: "Inter_500Medium",
-                            fontSize: 14,
-                            color: "#1a1a2e",
-                          }}
-                        >
-                          {resource.title}
-                        </Text>
-                        <Text
-                          style={{
-                            fontFamily: "Inter_400Regular",
-                            fontSize: 11,
-                            color: "#888",
-                            marginTop: 2,
-                          }}
-                          numberOfLines={1}
-                        >
-                          {resource.description}
-                        </Text>
-                      </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#ccc" />
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: "#888",
-                    textAlign: "center",
-                    paddingVertical: 16,
-                  }}
-                >
-                  Loading wellness resources... 🧘
-                </Text>
-              )}
-            </View>
-          </>
-        )}
-
-
-        {/* Admin Section (Owner Only) */}
-        {isAdmin && (
-          <>
-            <Text
-              style={{
-                fontFamily: "Inter_600SemiBold",
-                fontSize: 12,
-                color: "#6366F1",
-                marginBottom: 12,
-                marginLeft: 12,
-                letterSpacing: 1.5,
-              }}
-            >
-              OWNER CONSOLE
-            </Text>
-
-            <View
-              style={{
-                backgroundColor: "#F5F7FF",
-                borderRadius: 20,
                 borderWidth: 1,
-                borderColor: "#E0E7FF",
-                marginBottom: 24,
-                overflow: "hidden"
+                borderColor: "#F1F5F9",
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.04,
+                shadowRadius: 8,
+                elevation: 2,
               }}
             >
-              <TouchableOpacity
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: 16,
-                }}
-                onPress={() => router.push("/(admin)/dashboard" as any)}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      backgroundColor: "#4F46E5",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      shadowColor: "#4F46E5",
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.2,
-                      shadowRadius: 6,
-                    }}
-                  >
-                    <Ionicons name="shield-checkmark" size={22} color="white" />
-                  </View>
-                  <View style={{ marginLeft: 16 }}>
-                    <Text
-                      style={{
-                        fontFamily: "Manrope_700Bold",
-                        fontSize: 16,
-                        color: "#1a1a2e",
-                      }}
-                    >
-                      Admin Dashboard
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: "Inter_400Regular",
-                        fontSize: 12,
-                        color: "#6366F1",
-                        marginTop: 2,
-                      }}
-                    >
-                      View live analytics & feedback
-                    </Text>
-                  </View>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                  <Ionicons name="star" size={14} color="#F59E0B" style={{ marginRight: 6 }} />
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#0f172a" }}>Premium Membership</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#6366F1" />
-              </TouchableOpacity>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#64748b", lineHeight: 18, marginBottom: 16 }}>
+                  Unlock personalized AI insights and unlimited mood tracking.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(modals)/paywall" as any)}
+                  style={{ backgroundColor: "#2013C9", alignSelf: "flex-start", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+                >
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#fff" }}>Upgrade Now</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ width: 64, height: 64, backgroundColor: "#F5F3FF", borderRadius: 16, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="hardware-chip" size={32} color="#A78BFA" />
+              </View>
             </View>
-          </>
+          </View>
         )}
 
-        {/* Support Section */}
-        <Text
-          style={{
-            fontFamily: "Inter_500Medium",
-            fontSize: 13,
-            color: "#999",
-            marginBottom: 12,
-            marginLeft: 12,
-            letterSpacing: 1,
-            marginTop: 20,
+        {/* SUBSCRIPTION */}
+        <SectionTitle title="SUBSCRIPTION" />
+        {isPremium ? (
+          <SettingRow
+            icon="card"
+            label="Manage Subscription"
+            subtitle="View or cancel your active plan"
+            onPress={handleManageSubscription}
+          />
+        ) : (
+          <SettingRow
+            icon="card-outline"
+            label="View Plans"
+            subtitle="Upgrade to unlock premium features"
+            onPress={() => router.push("/(modals)/paywall" as any)}
+          />
+        )}
+        <SettingRow
+          icon={isRestoringPurchases ? "refresh" : "refresh-outline"}
+          label="Restore Purchases"
+          subtitle="Recover your previous subscription"
+          iconColor="#475569"
+          onPress={handleRestorePurchases}
+          disabled={isRestoringPurchases}
+          rightElement={
+            isRestoringPurchases ? (
+              <ActivityIndicator size="small" color="#4F46E5" />
+            ) : (
+              <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+            )
+          }
+        />
+
+        {/* ACCOUNT */}
+        <SectionTitle title="ACCOUNT" />
+        <SettingRow
+          icon="language"
+          label="Language"
+          subtitle={profile?.language ? `Currently: ${profile.language}` : "Change app language"}
+          onPress={() => router.push("/(auth)/language-picker" as any)}
+        />
+        <SettingRow
+          icon="lock-closed"
+          label="Privacy Policy"
+          subtitle="Read our privacy terms"
+          onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+          rightElement={<Ionicons name="open-outline" size={16} color="#CBD5E1" />}
+        />
+        <SettingRow
+          icon="key"
+          label="Reset Password"
+          subtitle="Send password reset email"
+          onPress={() => {
+            if (!user?.email) return;
+            Alert.alert(
+              "Reset Password",
+              `We'll send a reset link to ${user.email}`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Send",
+                  onPress: async () => {
+                    try {
+                      const resetLink = Linking.createURL("/(auth)/reset-password");
+                      await supabase.auth.resetPasswordForEmail(user.email!, {
+                        redirectTo: resetLink,
+                      });
+                      Alert.alert("Sent!", "Check your email for the reset link.");
+                    } catch {
+                      Alert.alert("Error", "Could not send reset email.");
+                    }
+                  },
+                },
+              ]
+            );
           }}
-        >
-          SUPPORT & FEEDBACK
-        </Text>
+        />
+        <SettingRow
+          icon="chatbubbles-outline"
+          label="Clear Chat History"
+          subtitle="Wipe all companion messages"
+          iconColor="#EAB308"
+          onPress={handleClearChatHistory}
+          disabled={isClearingChat}
+          rightElement={
+            isClearingChat ? (
+              <ActivityIndicator size="small" color="#EAB308" />
+            ) : (
+              <Ionicons name="warning-outline" size={16} color="#EAB308" />
+            )
+          }
+        />
+        <SettingRow
+          icon="trash-outline"
+          label="Delete Account"
+          subtitle="Permanently remove your data"
+          iconColor="#EF4444"
+          labelColor="#EF4444"
+          onPress={handleDeleteAccount}
+          disabled={isDeletingAccount}
+          rightElement={
+            isDeletingAccount ? (
+              <ActivityIndicator size="small" color="#EF4444" />
+            ) : (
+              <Ionicons name="chevron-forward" size={16} color="#FCC8D1" />
+            )
+          }
+        />
 
-        <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4 border-b border-[#F5F5F5]"
-            onPress={() => setShowFeedbackModal(true)}
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-full bg-[#F0FDF4] items-center justify-center">
-                <Ionicons
-                  name="chatbox-ellipses-outline"
-                  size={20}
-                  color="#10B981"
-                />
-              </View>
-              <Text
-                style={{
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 15,
-                  color: "#1a1a2e",
-                }}
-              >
-                Send Feedback
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4"
-            onPress={() => Linking.openURL("mailto:support@moodmateai.com")}
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-full bg-[#EFF6FF] items-center justify-center">
-                <Ionicons name="mail-outline" size={20} color="#2563EB" />
-              </View>
-              <Text
-                style={{
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 15,
-                  color: "#1a1a2e",
-                }}
-              >
-                Email Support
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
+        {/* APP SETTINGS */}
+        <SectionTitle title="APP SETTINGS" />
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingVertical: 14 }}>
+          <View style={{ width: 20, alignItems: "center" }}>
+            <Ionicons name="moon" size={20} color="#475569" />
+          </View>
+          <View style={{ flex: 1, paddingHorizontal: 16 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#0f172a" }}>Dark Mode</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#64748b" }}>Switch app appearance</Text>
+          </View>
+          <Switch
+            value={isDarkMode}
+            onValueChange={setIsDarkMode}
+            trackColor={{ false: "#E2E8F0", true: "#4F46E5" }}
+            thumbColor="#fff"
+            style={{ transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }] }}
+          />
         </View>
-
-        {/* Danger Zone */}
-        <Text
-          style={{
-            fontFamily: "Inter_500Medium",
-            fontSize: 13,
-            color: "#999",
-            marginBottom: 12,
-            marginLeft: 12,
+        <SettingRow
+          icon="notifications"
+          label="Notifications"
+          subtitle="Reminders and wellness alerts"
+          onPress={() => {
+            Linking.openSettings().catch(() => {
+              Alert.alert("Open Settings", "Please go to your device Settings to manage notifications.");
+            });
           }}
-        >
-          DANGER ZONE
-        </Text>
+        />
 
-        <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4"
-            onPress={handleClearChatHistory}
-            disabled={isClearingChat}
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-full bg-[#FEF2F2] items-center justify-center">
-                {isClearingChat ? (
-                  <ActivityIndicator size="small" color="#DC2626" />
-                ) : (
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={20}
-                    color="#DC2626"
-                  />
-                )}
-              </View>
-              <View>
-                <Text
-                  style={{
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 16,
-                    color: "#DC2626",
-                  }}
-                >
-                  Clear Chat History
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: "#DC2626",
-                    opacity: 0.7,
-                    marginTop: 2,
-                  }}
-                >
-                  Delete all conversations permanently
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </View>
+        {/* SUPPORT */}
+        <SectionTitle title="SUPPORT" />
+        <SettingRow
+          icon="chatbubble-outline"
+          label="Send Feedback"
+          subtitle="Share your thoughts, report issues"
+          onPress={() => setShowFeedbackModal(true)}
+        />
+        <SettingRow
+          icon="mail-outline"
+          label="Email Support"
+          subtitle="Contact us directly"
+          onPress={() => Linking.openURL("mailto:support@moodmateai.com")}
+          rightElement={<Ionicons name="open-outline" size={16} color="#CBD5E1" />}
+        />
+        <SettingRow
+          icon="document-text"
+          label="Terms & Conditions"
+          subtitle="Read our legal guidelines"
+          onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+          rightElement={<Ionicons name="open-outline" size={16} color="#CBD5E1" />}
+        />
 
-        {/* Account Section */}
-        <Text
-          style={{
-            fontFamily: "Inter_500Medium",
-            fontSize: 13,
-            color: "#999",
-            marginBottom: 12,
-            marginLeft: 12,
-            letterSpacing: 1,
-          }}
-        >
-          ACCOUNT
-        </Text>
-
-        <View className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden mb-8">
-          {/* Link Account - Only for Anonymous */}
-          {user?.is_anonymous && (
+        {/* Log Out */}
+        <View style={{ marginTop: 40, alignItems: "center", paddingBottom: 20 }}>
+          {isSignOutInProgress ? (
+            <ActivityIndicator color="#EF4444" />
+          ) : (
             <TouchableOpacity
-              className="flex-row items-center justify-between p-4 border-b border-[#F5F5F5]"
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(modals)/link-account");
-              }}
+              onPress={handleSignOut}
+              style={{ flexDirection: "row", alignItems: "center", padding: 12 }}
             >
-              <View className="flex-row items-center gap-3">
-                <View className="w-10 h-10 rounded-full bg-[#EFF6FF] items-center justify-center">
-                  <Ionicons name="link-outline" size={20} color="#2563EB" />
-                </View>
-                <Text
-                  style={{
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 15,
-                    color: "#1a1a2e",
-                  }}
-                >
-                  Link Account
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              <Ionicons name="log-out-outline" size={22} color="#EF4444" style={{ marginRight: 8 }} />
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#EF4444" }}>Log Out</Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            className="flex-row items-center justify-between p-4"
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setLogoutModalType(user?.is_anonymous ? "anonymous" : "normal");
-              setShowLogoutModal(true);
-            }}
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-full bg-[#FEF2F2] items-center justify-center">
-                <Ionicons name="log-out-outline" size={20} color="#DC2626" />
-              </View>
-              <Text
-                style={{
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 16,
-                  color: "#DC2626",
-                }}
-              >
-                Log Out
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Legal Links — required by App Store & Play Store */}
-        <View className="flex-row justify-center mt-2" style={{ gap: 20 }}>
-          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
-            <Text
-              style={{
-                fontFamily: "Inter_400Regular",
-                fontSize: 12,
-                color: "#999",
-                textDecorationLine: "underline",
-              }}
-            >
-              Privacy Policy
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
-          >
-            <Text
-              style={{
-                fontFamily: "Inter_400Regular",
-                fontSize: 12,
-                color: "#999",
-                textDecorationLine: "underline",
-              }}
-            >
-              Terms of Service
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Medical Disclaimer — Required for Play Store Mental Health Category */}
-        <View style={{ marginTop: 20, marginBottom: 40, paddingHorizontal: 12 }}>
-          <Text
-            style={{
-              fontFamily: "Inter_400Regular",
-              fontSize: 11,
-              color: "#94a3b8",
-              textAlign: "center",
-              lineHeight: 16,
-            }}
-          >
-            MoodMateAI is an AI companion and is NOT a replacement for professional medical advice, diagnosis, or treatment. If you are in a crisis, please contact your local emergency services or a mental health professional.
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#CBD5E1", marginTop: 16 }}>
+            MoodMate AI
           </Text>
         </View>
       </ScrollView>
 
-      {/* Custom Feedback Modal */}
-      <Modal visible={showFeedbackModal} transparent animationType="slide" onRequestClose={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}>
+      {/* Send Feedback Modal */}
+      <Modal
+        visible={showFeedbackModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowFeedbackModal(false)}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
-          keyboardVerticalOffset={0}
+          style={{ flex: 1, backgroundColor: "#fff" }}
         >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}
-            onPress={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}
-          >
-            <TouchableOpacity activeOpacity={1}>
-              <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40 }}>
-                {/* Handle bar */}
-                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#E9ECEF", alignSelf: "center", marginBottom: 20 }} />
-
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <Text style={{ fontFamily: "Manrope_800ExtraBold", fontSize: 22, color: "#1a1a2e" }}>Send Feedback</Text>
-                  <TouchableOpacity onPress={() => { setShowFeedbackModal(false); setFeedbackMessage(""); }}>
-                    <Ionicons name="close-circle" size={32} color="#ccc" />
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#666", marginBottom: 16, lineHeight: 20 }}>
-                  How can we improve MoodMateAI? Your thoughts help us make the app better for everyone.
-                </Text>
-
-                <TextInput
-                  multiline
-                  scrollEnabled
-                  placeholder="Tell us what's on your mind..."
-                  value={feedbackMessage}
-                  onChangeText={setFeedbackMessage}
-                  placeholderTextColor="#999"
-                  autoFocus
-                  style={{
-                    backgroundColor: "#F8F9FA",
-                    borderRadius: 16,
-                    padding: 16,
-                    minHeight: 120,
-                    maxHeight: 220,
-                    textAlignVertical: "top",
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 16,
-                    color: "#1a1a2e",
-                    borderWidth: 1,
-                    borderColor: feedbackMessage.length > 0 ? "#FF6B9D" : "#E9ECEF",
-                    marginBottom: 20,
-                  }}
-                />
-
-                <TouchableOpacity
-                  disabled={!feedbackMessage.trim() || isSendingFeedback}
-                  style={{
-                    backgroundColor: feedbackMessage.trim() ? "#FF6B9D" : "#FFC2D6",
-                    borderRadius: 16,
-                    paddingVertical: 18,
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    opacity: isSendingFeedback ? 0.7 : 1,
-                  }}
-                  onPress={async () => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setIsSendingFeedback(true);
-                    try {
-                      const { error } = await supabase.from("feedback" as any).insert({
-                        user_id: user?.id,
-                        message: feedbackMessage.trim(),
-                        rating: 5,
-                      });
-                      if (error) throw error;
-                      Alert.alert("Success! 🎉", "Thank you for your feedback. We'll look into it!");
-                      setShowFeedbackModal(false);
-                      setFeedbackMessage("");
-                    } catch (e) {
-                      logger.error("Feedback error:", e);
-                      Alert.alert("Error", "Could not send feedback. Please try again later.");
-                    } finally {
-                      setIsSendingFeedback(false);
-                    }
-                  }}
-                >
-                  {isSendingFeedback ? (
-                    <ActivityIndicator color="white" style={{ marginRight: 8 }} />
-                  ) : (
-                    <Ionicons name="send" size={18} color="white" style={{ marginRight: 8 }} />
-                  )}
-                  <Text style={{ fontFamily: "Manrope_700Bold", fontSize: 16, color: "white" }}>
-                    {isSendingFeedback ? "Sending..." : "Submit Feedback"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Custom Logout Modal */}
-      <Modal visible={showLogoutModal} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}>
-          <View style={{ backgroundColor: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 400, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 }}>
-            {/* Modal Icon */}
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: logoutModalType === "anonymous" ? "#FEF2F2" : "#F3F4F6", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-              <Ionicons name={logoutModalType === "anonymous" ? "warning" : "log-out"} size={32} color={logoutModalType === "anonymous" ? "#DC2626" : "#4B5563"} />
+          <View style={{ flex: 1, paddingTop: Platform.OS === "android" ? 24 : 0 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#0f172a" }}>Send Feedback</Text>
+              <TouchableOpacity onPress={() => setShowFeedbackModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
             </View>
 
-            {/* Modal Title */}
-            <Text style={{ fontFamily: "Manrope_800ExtraBold", fontSize: 22, color: "#1a1a2e", marginBottom: 12, textAlign: "center" }}>
-              {logoutModalType === "anonymous" ? "Wait, don't lose your chats!" : "Log Out"}
-            </Text>
+            <View style={{ padding: 20, flex: 1 }}>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#475569", marginBottom: 16 }}>
+                We'd love to hear your thoughts, suggestions, or any issues you've encountered!
+              </Text>
+              <TextInput
+                style={{
+                  backgroundColor: "#F8FAFC",
+                  borderRadius: 12,
+                  padding: 16,
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 15,
+                  color: "#0f172a",
+                  minHeight: 150,
+                  textAlignVertical: "top",
+                  borderWidth: 1,
+                  borderColor: "#E2E8F0",
+                }}
+                placeholder="Type your feedback here..."
+                placeholderTextColor="#94A3B8"
+                multiline
+                maxLength={500}
+                value={feedbackMessage}
+                onChangeText={setFeedbackMessage}
+                autoFocus
+              />
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#94A3B8", textAlign: "right", marginTop: 8 }}>
+                {feedbackMessage.length}/500
+              </Text>
+            </View>
 
-            {/* Modal Message */}
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 15, color: "#666", textAlign: "center", marginBottom: 24, lineHeight: 22 }}>
-              {logoutModalType === "anonymous"
-                ? "You will lose all your chats and your companion forever if you log out now! Please link your account first to save them safely in the cloud."
-                : "Are you sure you want to log out of your account? Your chats are safely backed up and waiting for you when you return."}
-            </Text>
-
-            {/* Modal Buttons */}
-            {logoutModalType === "anonymous" ? (
-              <View style={{ width: "100%", gap: 12 }}>
-                <TouchableOpacity
-                  style={{ backgroundColor: "#1337ec", paddingVertical: 16, borderRadius: 16, alignItems: "center" }}
-                  onPress={() => {
-                    setShowLogoutModal(false);
-                    router.push("/(modals)/link-account");
-                  }}
-                >
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#fff" }}>Link Account</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{ paddingVertical: 16, borderRadius: 16, alignItems: "center", backgroundColor: "#FEF2F2" }}
-                  onPress={async () => {
-                    setShowLogoutModal(false);
-                    await signOut();
-                    router.replace("/(auth)/welcome");
-                  }}
-                >
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#DC2626" }}>Logout Anyway (Lose Data)</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{ paddingVertical: 12, alignItems: "center" }}
-                  onPress={() => setShowLogoutModal(false)}
-                >
-                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 15, color: "#64748b" }}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={{ width: "100%", flexDirection: "row", gap: 12 }}>
-                <TouchableOpacity
-                  style={{ flex: 1, paddingVertical: 16, borderRadius: 16, alignItems: "center", backgroundColor: "#F3F4F6" }}
-                  onPress={() => setShowLogoutModal(false)}
-                >
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#4B5563" }}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{ flex: 1, paddingVertical: 16, borderRadius: 16, alignItems: "center", backgroundColor: "#DC2626" }}
-                  onPress={async () => {
-                    setShowLogoutModal(false);
-                    await signOut();
-                    router.replace("/(auth)/welcome");
-                  }}
-                >
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#fff" }}>Log Out</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            <View style={{ padding: 24, paddingBottom: Platform.OS === "ios" ? insets.bottom + 24 : 24, borderTopWidth: 1, borderTopColor: "#F1F5F9" }}>
+              <TouchableOpacity
+                onPress={handleSendFeedback}
+                disabled={!feedbackMessage.trim() || isSendingFeedback}
+                style={{
+                  backgroundColor: !feedbackMessage.trim() || isSendingFeedback ? "#E2E8F0" : "#2013C9",
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  alignItems: "center",
+                }}
+              >
+                {isSendingFeedback ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: !feedbackMessage.trim() ? "#94A3B8" : "#fff" }}>
+                    Send Feedback
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal >
-      <BottomNav />
-    </View >
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
   );
 }

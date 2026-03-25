@@ -427,7 +427,7 @@ export const useAuth = create<AuthState>((set, get) => ({
           const isAdmin =
             prof.role === "admin" ||
             prof.user_id === "af2c2707-6887-4638-89f4-34509747514b" || // Native Testing UID
-            user?.email === "harsh@moodmateai.com";
+            user?.email === "admin@example.com";
 
           const currentState = get();
           const nextOnboarded = (prof.onboarded as boolean) ?? false;
@@ -494,7 +494,7 @@ export const useAuth = create<AuthState>((set, get) => ({
                     updatedProf.role === "admin" ||
                     updatedProf.user_id ===
                       "af2c2707-6887-4638-89f4-34509747514b" ||
-                    user?.email === "harsh@moodmateai.com";
+                    user?.email === "admin@example.com";
 
                   const currentState = get();
                   const nextIsPremium = updatedProf.is_premium === true;

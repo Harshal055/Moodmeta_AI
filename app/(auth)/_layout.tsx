@@ -5,6 +5,7 @@ export default function AuthLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="welcome" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="mood-selection" />
       <Stack.Screen name="role-picker" />
       <Stack.Screen name="country-picker" />
       <Stack.Screen name="language-picker" />

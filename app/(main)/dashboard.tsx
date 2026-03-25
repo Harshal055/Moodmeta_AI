@@ -3,15 +3,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Easing,
-    Image,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Easing,
+  Image,
+  ImageBackground,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import BottomNav from "../../components/BottomNav";
@@ -344,6 +345,26 @@ export default function UserDashboard() {
                 </Text>
               </View>
               <TouchableOpacity
+                onPress={() => router.push("/(main)/leaderboard" as any)}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: "#FFF7ED",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: "#FFEDD5",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 4,
+                  elevation: 3,
+                }}
+              >
+                <Ionicons name="trophy-outline" size={21} color="#C2410C" />
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => router.push("/(main)/settings")}
                 style={{
                   width: 44,
@@ -363,6 +384,90 @@ export default function UserDashboard() {
               </TouchableOpacity>
             </View>
           </Animated.View>
+
+          {/* Leaderboard Quick Access */}
+          <TouchableOpacity
+            onPress={() => router.push("/(main)/leaderboard" as any)}
+            activeOpacity={0.9}
+            className="mx-6 mb-6"
+          >
+            <LinearGradient
+              colors={["#312E81", "#4338CA"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                borderRadius: 20,
+                paddingHorizontal: 18,
+                paddingVertical: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                shadowColor: "#312E81",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.25,
+                shadowRadius: 10,
+                elevation: 5,
+              }}
+            >
+              <View
+                style={{ flexDirection: "row", alignItems: "center", flex: 1 }}
+              >
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: "rgba(255,255,255,0.18)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 20 }}>🏆</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_700Bold",
+                      fontSize: 15,
+                      color: "#EEF2FF",
+                    }}
+                  >
+                    Leaderboard
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 12,
+                      color: "#C7D2FE",
+                      marginTop: 2,
+                    }}
+                  >
+                    Track your rank and karma progress
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,255,255,0.16)",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "Manrope_700Bold",
+                    fontSize: 11,
+                    color: "#EEF2FF",
+                  }}
+                >
+                  OPEN
+                </Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
 
           {/* Companion Status Card - Premium Glassmorphism */}
           <TouchableOpacity
@@ -399,6 +504,13 @@ export default function UserDashboard() {
                       flexDirection: "row",
                       alignItems: "center",
                       marginBottom: 12,
+                      backgroundColor: "rgba(16, 185, 129, 0.1)",
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 12,
+                      alignSelf: "flex-start",
+                      borderWidth: 1,
+                      borderColor: "rgba(16, 185, 129, 0.2)",
                     }}
                   >
                     <Animated.View
@@ -407,7 +519,7 @@ export default function UserDashboard() {
                         height: 8,
                         borderRadius: 4,
                         backgroundColor: "#10B981",
-                        marginRight: 8,
+                        marginRight: 6,
                         transform: [{ scale: pulseAnim }],
                         shadowColor: "#10B981",
                         shadowRadius: 6,
@@ -416,14 +528,14 @@ export default function UserDashboard() {
                     />
                     <Text
                       style={{
-                        fontFamily: "Manrope_600SemiBold",
-                        fontSize: 11,
+                        fontFamily: "Manrope_700Bold",
+                        fontSize: 10,
                         color: "#10B981",
-                        letterSpacing: 1.5,
+                        letterSpacing: 1,
                         textTransform: "uppercase",
                       }}
                     >
-                      Online & Waiting
+                      Active & Present
                     </Text>
                   </View>
                   <Text
@@ -480,27 +592,34 @@ export default function UserDashboard() {
                 </Animated.View>
               </View>
 
-              <View
+              <TouchableOpacity
+                onPress={() => router.push("/(main)/chat" as any)}
+                activeOpacity={0.8}
                 style={{
                   marginTop: 24,
                   paddingVertical: 14,
-                  borderRadius: 16,
-                  backgroundColor: "rgba(255,255,255,0.1)",
+                  borderRadius: 20,
+                  backgroundColor: "rgba(255,255,255,0.12)",
                   alignItems: "center",
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.1)",
+                  borderColor: "rgba(255,255,255,0.15)",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 8,
                 }}
               >
                 <Text
                   style={{
-                    fontFamily: "Manrope_600SemiBold",
+                    fontFamily: "Manrope_700Bold",
                     fontSize: 15,
                     color: "#fff",
+                    letterSpacing: 0.5,
                   }}
                 >
-                  Message Now
+                  Start Conversation
                 </Text>
-              </View>
+              </TouchableOpacity>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -638,22 +757,25 @@ export default function UserDashboard() {
                       }}
                     >
                       {moodHistory.length > 0 ? (
-                        moodHistory.slice(-7).map((h: any, i: number) => (
-                          <View
-                            key={i}
-                            style={{
-                              // min height of 4px so even mood=1 renders a bar
-                              height: Math.max(4, (h.intensity / 10) * 40),
-                              width: 6,
-                              backgroundColor:
-                                i === Math.min(6, moodHistory.length - 1)
-                                  ? "#6366F1"
-                                  : "#E2E8F0",
-                              borderRadius: 3,
-                              marginRight: 4,
-                            }}
-                          />
-                        ))
+                        moodHistory.slice(-7).map((h: any, i: number) => {
+                          const isLast = i === Math.min(6, moodHistory.length - 1);
+                          return (
+                            <View
+                              key={i}
+                              style={{
+                                height: Math.max(6, (h.intensity / 10) * 40),
+                                width: 8,
+                                backgroundColor: isLast ? "#6366F1" : "#E2E8F0",
+                                borderRadius: 4,
+                                marginRight: 6,
+                                shadowColor: isLast ? "#6366F1" : "transparent",
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: isLast ? 0.3 : 0,
+                                shadowRadius: 6,
+                              }}
+                            />
+                          );
+                        })
                       ) : (
                         <TouchableOpacity
                           onPress={() => router.push("/(main)/chat" as any)}
@@ -743,21 +865,24 @@ export default function UserDashboard() {
                     <View
                       style={{
                         marginTop: 12,
-                        backgroundColor: "#EEF2FF",
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 8,
+                        backgroundColor: "#F5F3FF",
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 10,
                         alignSelf: "flex-start",
+                        borderWidth: 1,
+                        borderColor: "#DDD6FE",
                       }}
                     >
                       <Text
                         style={{
-                          fontFamily: "Manrope_700Bold",
-                          fontSize: 9,
-                          color: "#6366F1",
+                          fontFamily: "Manrope_800ExtraBold",
+                          fontSize: 10,
+                          color: "#7C3AED",
+                          letterSpacing: 0.5,
                         }}
                       >
-                        SAVED ✨
+                        DEEP MEMORY ✨
                       </Text>
                     </View>
                   </View>
@@ -784,18 +909,20 @@ export default function UserDashboard() {
           </View>
 
           {/* Milestones Card */}
-          {badges.length > 0 && (
-            <View className="px-6 mb-8">
-              <View className="flex-row justify-between items-center mb-4">
-                <Text
-                  style={{
-                    fontFamily: "Rosehot",
-                    fontSize: 24,
-                    color: "#0F172A",
-                  }}
-                >
-                  Milestones
-                </Text>
+          <View className="px-6 mb-8">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text
+                style={{
+                  fontFamily: "Rosehot",
+                  fontSize: 24,
+                  color: "#0F172A",
+                }}
+              >
+                Milestones
+              </Text>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
                 <Text
                   style={{
                     fontFamily: "Manrope_600SemiBold",
@@ -805,7 +932,30 @@ export default function UserDashboard() {
                 >
                   {stats.totalKarma} Karma
                 </Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(main)/leaderboard" as any)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: "#EEF2FF",
+                    borderWidth: 1,
+                    borderColor: "#C7D2FE",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_600SemiBold",
+                      fontSize: 11,
+                      color: "#4338CA",
+                    }}
+                  >
+                    Leaderboard
+                  </Text>
+                </TouchableOpacity>
               </View>
+            </View>
+            {badges.length > 0 ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -884,8 +1034,39 @@ export default function UserDashboard() {
                   );
                 })}
               </ScrollView>
-            </View>
-          )}
+            ) : (
+              <View
+                style={{
+                  backgroundColor: "#fff",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "#E2E8F0",
+                  padding: 16,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    fontSize: 14,
+                    color: "#334155",
+                    marginBottom: 6,
+                  }}
+                >
+                  Your first badge is close
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 12,
+                    color: "#64748B",
+                  }}
+                >
+                  Reach 50 karma to unlock Early Bird and appear stronger on the
+                  leaderboard.
+                </Text>
+              </View>
+            )}
+          </View>
 
           {/* Self-Care Hub - State of the Art Grid */}
           <View className="px-6 mb-10">
@@ -922,18 +1103,11 @@ export default function UserDashboard() {
                     elevation: 2,
                   }}
                 >
-                  <View
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 16,
-                      backgroundColor: "#FFF1F2",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 26 }}>🫁</Text>
-                  </View>
+                  <Image
+                    source={require("../../assets/images/breathing_icon.png")}
+                    style={{ width: 64, height: 64 }}
+                    resizeMode="contain"
+                  />
                   <View>
                     <Text
                       style={{
@@ -965,34 +1139,41 @@ export default function UserDashboard() {
                   activeOpacity={0.9}
                   style={{ flex: 1 }}
                 >
-                  <View
+                  <ImageBackground
+                    source={require("../../assets/images/meditation_bg.png")}
                     style={{
                       flex: 1,
-                      backgroundColor: "#fff",
                       borderRadius: 28,
-                      padding: 16,
-                      justifyContent: "center",
-                      alignItems: "center",
-                      borderWidth: 1,
-                      borderColor: "#F3E8FF",
+                      overflow: "hidden",
+                      justifyContent: "flex-end",
                       shadowColor: "#9333EA",
-                      shadowOpacity: 0.05,
+                      shadowOpacity: 0.08,
                       shadowRadius: 6,
                       elevation: 1,
                     }}
+                    imageStyle={{ borderRadius: 28 }}
+                    resizeMode="cover"
                   >
-                    <Text style={{ fontSize: 28, marginBottom: 6 }}>🧘</Text>
-                    <Text
+                    <View
                       style={{
-                        fontFamily: "Manrope_600SemiBold",
-                        fontSize: 14,
-                        color: "#9333EA",
+                        padding: 10,
+                        backgroundColor: "rgba(243, 232, 255, 0.70)",
+                        alignItems: "center",
                       }}
                     >
-                      Meditation
-                    </Text>
-                  </View>
+                      <Text
+                        style={{
+                          fontFamily: "Manrope_600SemiBold",
+                          fontSize: 14,
+                          color: "#6B21A8",
+                        }}
+                      >
+                        Meditation
+                      </Text>
+                    </View>
+                  </ImageBackground>
                 </TouchableOpacity>
+
 
                 {/* Crisis card */}
                 <TouchableOpacity
@@ -1016,7 +1197,11 @@ export default function UserDashboard() {
                       elevation: 1,
                     }}
                   >
-                    <Text style={{ fontSize: 28, marginBottom: 6 }}>🆘</Text>
+                    <Image
+                      source={require("../../assets/images/calm_now_icon.png")}
+                      style={{ width: 60, height: 60, marginBottom: 6 }}
+                      resizeMode="contain"
+                    />
                     <Text
                       style={{
                         fontFamily: "Manrope_600SemiBold",

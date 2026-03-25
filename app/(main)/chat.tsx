@@ -128,7 +128,11 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
 
   const user = useAuth((s) => s.currentUser);
-  const profile = useAuth((s) => s.profile);
+  const profileId = useAuth((s) => s.profile?.id);
+  const profileCompanionName = useAuth((s) => s.profile?.companion_name);
+  const profileRole = useAuth((s) => s.profile?.role);
+  const profileLanguage = useAuth((s) => s.profile?.language);
+  const profileAvatarUrl = useAuth((s) => s.profile?.avatar_url);
   const isAuthLoading = useAuth((s) => s.isLoading);
 
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -166,10 +170,9 @@ export default function ChatScreen() {
     messagesRef.current = messages;
   }, [messages]);
 
-  const companionName =
-    profile?.companion_name || paramName || "Your Companion";
-  const userRole = profile?.role || "default";
-  const userLanguage = profile?.language || "Hinglish";
+  const companionName = profileCompanionName || paramName || "Your Companion";
+  const userRole = profileRole || "default";
+  const userLanguage = profileLanguage || "Hinglish";
   const isPremium = useAuth((s) => s.isPremium);
   const isIOS = Platform.OS === "ios";
   const chatBottomOffset = Math.max(
@@ -183,11 +186,11 @@ export default function ChatScreen() {
       _id: 2,
       name: companionName,
       avatar:
-        profile?.avatar_url ||
+        profileAvatarUrl ||
         COMPANION_AVATARS[userRole] ||
         COMPANION_AVATARS.default,
     }),
-    [companionName, profile?.avatar_url, userRole],
+    [companionName, profileAvatarUrl, userRole],
   );
 
   // ── Network Connectivity Monitoring ─────────────────────────────────
@@ -279,7 +282,7 @@ export default function ChatScreen() {
   // Ghost user check is already handled in useAuth.initialize(),
   // no need to re-check here on every chat screen mount.
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!user || !profileId) return;
 
     // Avoid repeated initial reloads for the same user during profile/store churn.
     if (hasLoadedInitialHistoryForUserRef.current === user.id) return;
@@ -287,10 +290,10 @@ export default function ChatScreen() {
     hasLoadedInitialHistoryForUserRef.current = user.id;
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, profile?.id]);
+  }, [user?.id, profileId]);
 
   const loadHistory = async (loadMore = false, skipCacheHydration = false) => {
-    if (!user || !profile || isLoadingHistoryRef.current) return;
+    if (!user || !profileId || isLoadingHistoryRef.current) return;
     isLoadingHistoryRef.current = true;
     const cacheKey = `chat_history_${user.id}`;
 
@@ -377,7 +380,7 @@ export default function ChatScreen() {
               _id: "welcome-offline",
               text: "Hey there! I can't reach the server right now, but I'm still here for you. (Offline Mode)",
               createdAt: new Date(),
-              user: { _id: 2, name: profile?.companion_name || "Companion" },
+              user: { _id: 2, name: profileCompanionName || "Companion" },
             },
           ]);
         }
@@ -631,7 +634,7 @@ export default function ChatScreen() {
     return () => subscription.remove();
     // loadHistory is stable — it reads from closure refs, not props
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, profile?.id]);
+  }, [user?.id, profileId]);
 
   // ── Cache listener ──────────────────────────────────────────────
   // Whenever our messages state changes significantly (e.g., someone sends a message, or we receive one),
@@ -663,7 +666,7 @@ export default function ChatScreen() {
 
   // ── Real-time subscription ────────────────────────────────────────
   useEffect(() => {
-    if (!user?.id || !profile) return;
+    if (!user?.id || !profileId) return;
 
     const channel = supabase
       .channel(`chats:${user.id}`)
@@ -721,7 +724,7 @@ export default function ChatScreen() {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, profile?.id]); // Only rebind channel if the actual User ID changes
+  }, [user?.id, profileId]); // Only rebind channel if the actual User ID changes
 
   // ── Premium limit check (hard limit) ───────────────────────────
   const checkLimit = (count: number) => {
@@ -1054,6 +1057,13 @@ export default function ChatScreen() {
         await streamAssistantReply(msg.text, historyForOpenAI, true, stableId);
 
         checkLimit(userMessageCount + 1);
+
+        // Periodically trigger memory distillation for premium users
+        if (isPremium && (userMessageCount + 1) % 10 === 0) {
+          supabase.functions.invoke("distill-memory").catch((e) => {
+            logger.warn("Memory distillation trigger failed:", e);
+          });
+        }
       } catch (err) {
         logger.error("onSend error:", err);
         setIsTyping(false);
@@ -1115,7 +1125,7 @@ export default function ChatScreen() {
             : new Date().toISOString(),
         })),
         companionName,
-        profile?.companion_name || "You",
+        profileCompanionName || "You",
       );
 
       if (success) {
@@ -1127,7 +1137,38 @@ export default function ChatScreen() {
     } finally {
       setIsExporting(false);
     }
-  }, [isPremium, messages, companionName, profile?.companion_name]);
+  }, [isPremium, messages, companionName, profileCompanionName]);
+
+  const renderAvatar = useCallback(() => {
+    return (
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: "#FDF2F8",
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 1,
+          borderColor: "#FCE7F3",
+        }}
+      >
+        {profileAvatarUrl ? (
+          <Image
+            source={{ uri: profileAvatarUrl }}
+            style={{ width: 36, height: 36, borderRadius: 18 }}
+          />
+        ) : (
+          <Text style={{ fontSize: 18 }}>❤️</Text>
+        )}
+      </View>
+    );
+  }, [profileAvatarUrl]);
+
+  const listViewProps = useMemo(
+    () => ({ keyboardShouldPersistTaps: "handled" as const }),
+    [],
+  );
 
   const renderBubble = useCallback(
     (props: any) => {
@@ -1433,9 +1474,9 @@ export default function ChatScreen() {
               <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
             </TouchableOpacity>
 
-            {profile?.avatar_url ? (
+            {profileAvatarUrl ? (
               <Image
-                source={{ uri: profile.avatar_url }}
+                source={{ uri: profileAvatarUrl }}
                 className="w-11 h-11 rounded-full"
               />
             ) : (
@@ -1663,36 +1704,14 @@ export default function ChatScreen() {
 
         <GiftedChat
           messages={messages}
-          onSend={(newMsgs: IMessage[]) => onSend(newMsgs)}
+          onSend={onSend}
           user={CURRENT_USER}
           isTyping={isTyping}
           renderBubble={renderBubble}
           renderMessageText={renderMessageText}
           renderInputToolbar={renderInputToolbar}
           renderSend={renderSend}
-          renderAvatar={(props: any) => (
-            <View
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: "#FDF2F8",
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: "#FCE7F3",
-              }}
-            >
-              {profile?.avatar_url ? (
-                <Image
-                  source={{ uri: profile.avatar_url }}
-                  style={{ width: 36, height: 36, borderRadius: 18 }}
-                />
-              ) : (
-                <Text style={{ fontSize: 18 }}>❤️</Text>
-              )}
-            </View>
-          )}
+          renderAvatar={renderAvatar}
           // @ts-ignore
           showUserAvatar={false}
           showAvatarForEveryMessage={false}
@@ -1700,9 +1719,7 @@ export default function ChatScreen() {
           placeholder="Type a message..."
           alwaysShowSend
           isKeyboardInternallyHandled={isIOS}
-          listViewProps={{
-            keyboardShouldPersistTaps: "handled",
-          }}
+          listViewProps={listViewProps}
           loadEarlier={hasMoreMessages}
           isLoadingEarlier={isLoadingMore}
           onLoadEarlier={handleLoadEarlier}

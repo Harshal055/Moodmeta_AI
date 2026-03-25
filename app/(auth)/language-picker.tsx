@@ -2,14 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
@@ -25,32 +25,7 @@ const languages = [
   { id: "Other", label: "Other", desc: "Type your own language" },
 ];
 
-function getDefaultCompanionName(role: string | null): string {
-  switch (role) {
-    case "boyfriend": {
-      const names = ["Ryan", "Alex", "Kai", "Ethan", "Noah"];
-      return names[Math.floor(Math.random() * names.length)];
-    }
-    case "girlfriend": {
-      const names = ["Maya", "Luna", "Aria", "Zara", "Sophie"];
-      return names[Math.floor(Math.random() * names.length)];
-    }
-    case "mother": {
-      const names = ["Mom", "Mummy", "Mama"];
-      return names[Math.floor(Math.random() * names.length)];
-    }
-    case "father": {
-      const names = ["Dad", "Papa", "Daddy"];
-      return names[Math.floor(Math.random() * names.length)];
-    }
-    case "friend": {
-      const names = ["Sam", "Jamie", "Taylor", "Jordan"];
-      return names[Math.floor(Math.random() * names.length)];
-    }
-    default:
-      return "Companion";
-  }
-}
+// Removed getDefaultCompanionName logic as name selection is moved to NameCompanion screen
 
 export default function LanguagePicker() {
   const router = useRouter();
@@ -70,7 +45,6 @@ export default function LanguagePicker() {
   const [customLanguage, setCustomLanguage] = useState(
     isCommon ? "" : savedLanguage || "",
   );
-  const [companionName, setCompanionName] = useState(savedCompanionName);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleNext = async () => {
@@ -81,23 +55,16 @@ export default function LanguagePicker() {
           ? customLanguage.trim() || "Other"
           : selectedLanguage;
 
-      if (selectedRole === "custom" && !companionName.trim()) {
-        Alert.alert(
-          "Name Required",
-          "Please enter a name for your custom companion.",
-        );
-        setIsSaving(false);
-        return;
+      await updateProfile({ language: finalLang });
+      if (useAuth.getState().onboarded) {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(main)/settings");
+        }
+      } else {
+        router.push("/(auth)/name-companion");
       }
-
-      const finalName =
-        companionName.trim() || getDefaultCompanionName(selectedRole);
-
-      await updateProfile({ language: finalLang, companion_name: finalName });
-      router.push({
-        pathname: "/(auth)/building",
-        params: { companionName: finalName },
-      });
     } catch (e) {
       console.error("Failed to save language", e);
     } finally {
@@ -112,7 +79,7 @@ export default function LanguagePicker() {
     >
       <View style={{ flex: 1, paddingTop: insets.top }}>
         {/* Header */}
-        <View className="px-5 pt-8 pb-6">
+        <View style={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 20 }}>
           <TouchableOpacity
             onPress={() => {
               if (router.canGoBack()) {
@@ -121,7 +88,7 @@ export default function LanguagePicker() {
                 router.replace("/(auth)/role-picker");
               }
             }}
-            className="mb-6 w-10"
+            style={{ width: 40, marginBottom: 20 }}
           >
             <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
           </TouchableOpacity>
@@ -129,18 +96,20 @@ export default function LanguagePicker() {
           <Text
             style={{
               fontFamily: "Rosehot",
-              fontSize: 32,
+              fontSize: 36,
               color: "#1a1a2e",
-              marginBottom: 8,
+              lineHeight: 44,
+              marginBottom: 12,
             }}
           >
-            How should they speak? 💬
+            How should they{"\n"}speak? 💬
           </Text>
           <Text
             style={{
               fontFamily: "Inter_400Regular",
               fontSize: 16,
-              color: "#666",
+              color: "#64748b",
+              lineHeight: 24,
             }}
           >
             Choose the primary language for your companion.
@@ -149,87 +118,95 @@ export default function LanguagePicker() {
 
         {/* Content */}
         <ScrollView
-          className="flex-1 px-5"
+          style={{ flex: 1, paddingHorizontal: 24 }}
           showsVerticalScrollIndicator={false}
         >
           {languages.map((lang) => {
             const isSelected = selectedLanguage === lang.id;
 
             return (
-              <View key={lang.id} className="mb-4">
+              <View key={lang.id} style={{ marginBottom: 12 }}>
                 <TouchableOpacity
                   onPress={() => setSelectedLanguage(lang.id)}
                   activeOpacity={0.7}
-                  className={`p-5 rounded-xl border-2 ${
-                    isSelected
-                      ? "border-[#1a1a2e] bg-[#FAFAFA]"
-                      : "border-transparent bg-[#F7F7F8]"
-                  }`}
+                  style={{
+                    padding: 18,
+                    borderRadius: 12,
+                    borderWidth: isSelected ? 1.5 : 1.5,
+                    borderColor: isSelected ? "#0f172a" : "transparent",
+                    backgroundColor: isSelected ? "#fff" : "#F8FAFC",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
                 >
-                  <View className="flex-row items-center justify-between">
-                    <View>
-                      <Text
-                        style={{
-                          fontFamily: isSelected
-                            ? "Inter_500Medium"
-                            : "Inter_500Medium",
-                          fontSize: 18,
-                          color: "#1a1a2e",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {lang.label}
-                      </Text>
-                      <Text
-                        style={{
-                          fontFamily: "Inter_400Regular",
-                          fontSize: 14,
-                          color: isSelected ? "#444" : "#888",
-                        }}
-                      >
-                        {lang.desc}
-                      </Text>
-                    </View>
-
-                    {/* Custom Radio Button */}
-                    <View
+                  <View style={{ flex: 1, paddingRight: 16 }}>
+                    <Text
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 12,
-                        borderWidth: 2,
-                        borderColor: isSelected ? "#1a1a2e" : "#ccc",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        fontFamily: "Inter_600SemiBold",
+                        fontSize: 16,
+                        color: "#0f172a",
+                        marginBottom: 4,
                       }}
                     >
-                      {isSelected && (
-                        <View
-                          style={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: 6,
-                            backgroundColor: "#1a1a2e",
-                          }}
-                        />
-                      )}
-                    </View>
+                      {lang.label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "Inter_400Regular",
+                        fontSize: 13,
+                        color: "#64748b",
+                      }}
+                    >
+                      {lang.desc}
+                    </Text>
+                  </View>
+
+                  {/* Radio Button */}
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      borderWidth: 2,
+                      borderColor: isSelected ? "#0f172a" : "#CBD5E1",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#fff",
+                    }}
+                  >
+                    {isSelected && (
+                      <View
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: 6,
+                          backgroundColor: "#0f172a",
+                        }}
+                      />
+                    )}
                   </View>
                 </TouchableOpacity>
 
                 {/* Custom text input for Other */}
                 {lang.id === "Other" && isSelected && (
-                  <View className="mt-3 px-1">
+                  <View style={{ marginTop: 8 }}>
                     <TextInput
                       value={customLanguage}
                       onChangeText={setCustomLanguage}
                       placeholder="E.g. Spanish, French, Marathi..."
-                      placeholderTextColor="#999"
+                      placeholderTextColor="#94A3B8"
                       returnKeyType="done"
-                      className="bg-[#F7F7F8] border border-[#E8E8EA] rounded-xl px-4 py-4 text-[16px]"
                       style={{
+                        backgroundColor: "#F8FAFC",
+                        borderWidth: 1,
+                        borderColor: "#E2E8F0",
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+                        paddingVertical: 14,
+                        fontSize: 15,
                         fontFamily: "Inter_500Medium",
-                        color: "#1a1a2e",
+                        color: "#0f172a",
                       }}
                     />
                   </View>
@@ -237,54 +214,45 @@ export default function LanguagePicker() {
               </View>
             );
           })}
-          <View className="bg-[#F7F7F8] border border-[#E8E8EA] rounded-xl p-4 mt-2 mb-2">
-            <Text
-              style={{
-                fontFamily: "Inter_500Medium",
-                fontSize: 13,
-                color: "#1a1a2e",
-                marginBottom: 8,
-              }}
-            >
-              Companion Name {selectedRole === "custom" ? "*" : "(optional)"}
-            </Text>
-            <TextInput
-              value={companionName}
-              onChangeText={setCompanionName}
-              placeholder="e.g. Maya, Luna, Kai..."
-              placeholderTextColor="#999"
-              maxLength={20}
-              className="bg-white border border-[#E8E8EA] rounded-xl px-4 py-4 text-[16px]"
-              style={{ fontFamily: "Inter_500Medium", color: "#1a1a2e" }}
-            />
-            <Text
-              style={{
-                fontFamily: "Inter_400Regular",
-                fontSize: 12,
-                color: "#888",
-                marginTop: 8,
-              }}
-            >
-              Leave blank to auto-generate a name.
-            </Text>
-          </View>
 
-          <View style={{ height: 140 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
 
-        {/* Footer fixed */}
+        {/* Footer */}
         <View
-          className="absolute bottom-0 w-full px-5 py-4 bg-white border-t border-gray-100"
-          style={{ paddingBottom: Math.max(insets.bottom, 20) }}
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            paddingHorizontal: 24,
+            paddingVertical: 16,
+            paddingBottom: Math.max(insets.bottom, 16),
+            backgroundColor: "#fff",
+            borderTopWidth: 1,
+            borderColor: "#F1F5F9",
+          }}
         >
           <TouchableOpacity
             onPress={handleNext}
             disabled={isSaving}
-            className="w-full bg-[#1a1a2e] py-4 rounded-full items-center justify-center flex-row shadow-sm"
+            style={{
+              backgroundColor: "#1e1b4b", // Dark navy almost black
+              paddingVertical: 16,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              shadowColor: "#1e1b4b",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.2,
+              shadowRadius: 8,
+              elevation: 4,
+            }}
           >
             <Text
               style={{
-                fontFamily: "Manrope_700Bold",
+                fontFamily: "Inter_700Bold",
                 fontSize: 16,
                 color: "#fff",
                 marginRight: 8,

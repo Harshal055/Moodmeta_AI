@@ -44,3 +44,21 @@ play-store-key.json
 # generated native folders
 /ios
 /android
+
+# Google/Firebase config
+google-services.json
+GoogleService-Info.plist
+
+# Credentials
+credentials/
+credentials.json
+
+# Logs and temporary files
+*.log
+tsc_errors.txt
+ts_output.txt
+typescript_errors.txt
+move_project.ps1
+
+
+upload_certificate.pem

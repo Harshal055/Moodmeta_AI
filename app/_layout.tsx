@@ -1,11 +1,12 @@
 import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
-import { Stack, useRouter } from "expo-router";
+import { router, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import "../global.css";
 import { useAuth } from "../hooks/useAuth";
+import { inAppUpdateService } from "../services/inAppUpdateService";
 import { revenueCatService } from "../services/revenueCatService";
 import { NotificationService } from "../utils/notificationService";
 
@@ -25,10 +26,10 @@ Notifications.setNotificationHandler({
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const router = useRouter();
   const isInitialized = useAuth((s) => s.isInitialized);
   const [rcInitialized, setRcInitialized] = useState(false);
-  const notificationResponseListener = useRef<Notifications.Subscription | null>(null);
+  const notificationResponseListener =
+    useRef<Notifications.Subscription | null>(null);
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular: require("../assets/fonts/Inter_400Regular.ttf"),
@@ -51,16 +52,22 @@ export default function RootLayout() {
 
     // Initialize anonymous auth immediately
     if (!isInitialized) {
-      useAuth.getState().initialize().then(() => {
-        // Initialize notifications after auth is ready
-        NotificationService.init().then(() => {
-          NotificationService.scheduleDailyReminder();
+      useAuth
+        .getState()
+        .initialize()
+        .then(() => {
+          // Initialize notifications after auth is ready
+          NotificationService.init().then(() => {
+            NotificationService.scheduleDailyReminder();
+          });
         });
-      });
     } else {
       // Auth already initialized (subsequent mounts)
       NotificationService.scheduleDailyReminder();
     }
+
+    // Check for Android Play Store updates (flexible update flow).
+    inAppUpdateService.checkAndStartFlexibleUpdate();
 
     // ── Listen for notification taps ──────────────────────────────
     // When the user taps a push notification (whether the app was in
@@ -72,6 +79,7 @@ export default function RootLayout() {
       });
 
     return () => {
+      inAppUpdateService.cleanup();
       if (notificationResponseListener.current) {
         notificationResponseListener.current.remove();
       }
