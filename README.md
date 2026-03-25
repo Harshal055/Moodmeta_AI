@@ -4,29 +4,29 @@
 
 MoodMateAI is a comprehensive mental wellness application built with **React Native (Expo)**, **Supabase**, and **OpenAI**. It provides users with a safe space to vent, track their moods, and engage in wellness activities like meditation and breathing exercises.
 
-## ✨ App Preview
+## ✨ App Gallery
 
 <div align="center">
   <table>
     <tr>
-      <td align="center"><b>Onboarding</b></td>
-      <td align="center"><b>Mood Selection</b></td>
-      <td align="center"><b>Companion Setup</b></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113850.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113854.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113858.jpg" width="200" /></td>
     </tr>
     <tr>
-      <td><img src="./assets/screenshots/onboarding.jpg" width="200" /></td>
-      <td><img src="./assets/screenshots/mood_selection.jpg" width="200" /></td>
-      <td><img src="./assets/screenshots/role_setup.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113902.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113907.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113910.jpg" width="200" /></td>
     </tr>
     <tr>
-      <td align="center"><b>Dashboard</b></td>
-      <td align="center"><b>Settings</b></td>
-      <td align="center"><b>Premium Success</b></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113939.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_113955.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_114000.jpg" width="200" /></td>
     </tr>
     <tr>
-      <td><img src="./assets/screenshots/dashboard.jpg" width="200" /></td>
-      <td><img src="./assets/screenshots/settings.jpg" width="200" /></td>
-      <td><img src="./assets/screenshots/premium_success.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_114004.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_114038.jpg" width="200" /></td>
+      <td><img src="./assets/screenshots/Screenshot_20260325_114040.jpg" width="200" /></td>
     </tr>
   </table>
 </div>
