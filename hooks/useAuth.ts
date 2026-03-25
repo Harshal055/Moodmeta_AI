@@ -11,16 +11,16 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    GoogleSignin,
-    statusCodes,
+  GoogleSignin,
+  statusCodes,
 } from "@react-native-google-signin/google-signin";
 import type { Session, User } from "@supabase/supabase-js";
 import { Alert } from "react-native";
 import { create } from "zustand";
 import {
-    ExpoSecureStoreAdapter,
-    supabase,
-    SUPABASE_STORAGE_KEY,
+  ExpoSecureStoreAdapter,
+  supabase,
+  SUPABASE_STORAGE_KEY,
 } from "../lib/supabase";
 import { revenueCatService } from "../services/revenueCatService";
 import { logger } from "../utils/logger";
@@ -237,7 +237,7 @@ export const useAuth = create<AuthState>((set, get) => ({
             .then((token) => {
               if (token) return get().updateAuthPushToken(token);
             })
-            .catch(() => {});
+            .catch(() => { });
         }
 
         // 4. Setup Global Listener
@@ -261,7 +261,7 @@ export const useAuth = create<AuthState>((set, get) => ({
               isAdmin: false,
             });
             // Also sign out from RevenueCat to be clean
-            revenueCatService.logout().catch(() => {});
+            revenueCatService.logout().catch(() => { });
 
             // Cleanup profile subscription on sign-out
             if (profileSubscription) {
@@ -415,7 +415,7 @@ export const useAuth = create<AuthState>((set, get) => ({
                 if (isRcPremium !== prof?.is_premium) {
                   get()
                     .syncPremiumStatus(isRcPremium)
-                    .catch(() => {});
+                    .catch(() => { });
                 }
               }
             })
@@ -427,7 +427,7 @@ export const useAuth = create<AuthState>((set, get) => ({
           const isAdmin =
             prof.role === "admin" ||
             prof.user_id === "af2c2707-6887-4638-89f4-34509747514b" || // Native Testing UID
-            user?.email === "admin@example.com";
+            user?.email === "harsh@moodmateai.com";
 
           const currentState = get();
           const nextOnboarded = (prof.onboarded as boolean) ?? false;
@@ -493,8 +493,8 @@ export const useAuth = create<AuthState>((set, get) => ({
                   const updatedIsAdmin =
                     updatedProf.role === "admin" ||
                     updatedProf.user_id ===
-                      "af2c2707-6887-4638-89f4-34509747514b" ||
-                    user?.email === "admin@example.com";
+                    "af2c2707-6887-4638-89f4-34509747514b" ||
+                    user?.email === "harsh@moodmateai.com";
 
                   const currentState = get();
                   const nextIsPremium = updatedProf.is_premium === true;

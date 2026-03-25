@@ -31,7 +31,7 @@ export default function LinkEmailScreen() {
         try {
             // ISSUE 3 FIX: Admin isolation
             // Prevent falls-through to updateUser for admin email
-            if (cleanEmail === "admin@example.com") {
+            if (cleanEmail === "harsh@moodmateai.com") {
                 const { error: adminSignInError } = await supabase.auth.signInWithPassword({
                     email: cleanEmail,
                     password: password,
